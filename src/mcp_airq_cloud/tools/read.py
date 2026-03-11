@@ -49,10 +49,11 @@ async def get_air_quality(
     """Get the most recent air quality sensor readings from the air-Q Cloud.
 
     Specify exactly one of:
-    - 'device' — query a single device by name
-    - 'location' — query all devices at a given location (e.g. "Wohnzimmer")
-    - 'group' — query all devices in a group (e.g. "zu Hause")
+    - 'device' — query a single device by name (e.g. "Wohnzimmer")
+    - 'location' — query all devices at a given location (e.g. "zu Hause")
+    - 'group' — query all devices in a group
 
+    Use list_devices first to see valid device names, locations, and groups.
     When using 'location' or 'group', the response contains one entry per
     device. The response includes a _sensor_guide field with unit and index
     documentation — read it before interpreting any values.
@@ -112,6 +113,24 @@ def _parse_time_range(
     return from_dt, to_dt
 
 
+def _filter_sensors(data: list[dict], sensors: list[str]) -> list[dict]:
+    """Keep only the requested sensor keys (plus datetime/timestamp) in each entry."""
+    keep = {s.lower() for s in sensors} | {"datetime", "timestamp", "deviceid"}
+    return [
+        {k: v for k, v in entry.items() if k.lower() in keep}
+        for entry in data
+    ]
+
+
+def _downsample(data: list[dict], max_points: int) -> list[dict]:
+    """Evenly downsample a list to at most max_points entries."""
+    n = len(data)
+    if n <= max_points:
+        return data
+    step = n / max_points
+    return [data[int(i * step)] for i in range(max_points)]
+
+
 @mcp.tool(annotations=READ_ONLY)
 @handle_cloud_errors
 async def get_air_quality_history(
@@ -120,16 +139,45 @@ async def get_air_quality_history(
     last_hours: float | None = None,
     from_datetime: str | None = None,
     to_datetime: str | None = None,
+    sensors: list[str] | None = None,
+    max_points: int | None = None,
 ) -> str:
     """Get historical air quality data from the air-Q Cloud within a time range.
 
-    Time range can be specified in two ways:
-    - 'last_hours' — get data from the last N hours (default: 1 hour)
-    - 'from_datetime' and 'to_datetime' — ISO 8601 datetime strings
-      (e.g. "2026-03-10T14:00:00" or "2026-03-10T14:00:00+01:00")
+    IMPORTANT — response size: air-Q records every ~2 minutes, so long ranges
+    produce large responses (24 h ≈ 720 readings × ~25 sensors). Always use
+    'sensors' and 'max_points' when querying more than 1–2 hours to stay within
+    response size limits. Example for a 24 h chart: sensors=["pm1","pm2_5","pm10"],
+    max_points=150.
 
-    If from_datetime is given, it takes precedence over last_hours.
-    If to_datetime is omitted, it defaults to now.
+    Time range — specify one of:
+    - 'last_hours' — data from the last N hours (default: 1 hour)
+    - 'from_datetime' / 'to_datetime' — ISO 8601 strings
+      (e.g. "2026-03-10T14:00:00" or "2026-03-10T14:00:00+01:00")
+      'from_datetime' takes precedence over 'last_hours'.
+      'to_datetime' defaults to now.
+
+    Optional filtering:
+    - 'sensors' — sensor names to include (e.g. ["pm1", "pm2_5", "pm10"]).
+      datetime and timestamp are always kept. Omit to get all sensors.
+      Valid sensor names (device-dependent):
+        Climate:    temperature, humidity, humidity_abs, dewpt,
+                    pressure, pressure_rel
+        Gases:      co2, tvoc, tvoc_ionsc, co, no2, so2, o3, h2s, oxygen,
+                    n2o, nh3_MR100, no_M250, hcl, hcn, hf, ph3, sih4,
+                    br2, cl2_M20, clo2, cs2, f2, c2h4, c2h4o, ch2o_M10,
+                    ch4s, ethanol, acid_M100, h2_M1000, h2o2, ash3,
+                    ch4_MIPEX, c3h8_MIPEX, r32, r454b, r454c
+        Particles:  pm1, pm2_5, pm10, TypPS,
+                    cnt0_3, cnt0_5, cnt1, cnt2_5, cnt5, cnt10,
+                    pm1_SPS30, pm2_5_SPS30, pm4_SPS30, pm10_SPS30,
+                    cnt0_5_SPS30, cnt1_SPS30, cnt2_5_SPS30, cnt4_SPS30,
+                    cnt10_SPS30, TypPS_SPS30
+        Acoustics:  sound, sound_max
+        Radon:      radon
+        Indices:    health, performance, mold, virus
+        Other:      flow1, flow2, flow3, flow4, wifi
+    - 'max_points' — downsample to at most this many evenly spaced points.
     """
     mgr = _manager(ctx)
     cloud = mgr.resolve(device)
@@ -146,13 +194,21 @@ async def get_air_quality_history(
 
     data = await cloud.get_data_timerange(from_ms, to_ms)
 
+    if sensors:
+        data = _filter_sensors(data, sensors)
+
+    if max_points is not None and max_points > 0:
+        data = _downsample(data, max_points)
+
     result: dict[str, object] = {
         "from": from_dt.isoformat(),
         "to": to_dt.isoformat(),
         "count": len(data),
         "data": data,
     }
-    guide = build_sensor_guide(set().union(*(entry.keys() for entry in data)))
+
+    all_keys = set().union(*(entry.keys() for entry in data)) if data else set()
+    guide = build_sensor_guide(all_keys)
     if guide:
         result["_sensor_guide"] = guide
 

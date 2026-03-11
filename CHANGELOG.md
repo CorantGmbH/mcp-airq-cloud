@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.0] - 2026-03-11
+
+### Added
+
+- `get_air_quality_history`: new `sensors` parameter — filter response to specific sensor names only (e.g. `["pm1", "pm2_5", "pm10"]`), reducing response size by up to 98% for large time ranges
+- `get_air_quality_history`: new `max_points` parameter — evenly downsample data to at most N points (useful for charting)
+- Full sensor name reference added to `get_air_quality_history` docstring (all sensors from the air-Q technical documentation)
+
+### Changed
+
+- Improved tool docstrings: prominent data-volume warning in `get_air_quality_history`; corrected examples in `get_air_quality` (`device` vs. `location`)
+- Development status classifier updated from Alpha to Production/Stable
+
 ## [0.1.4] - 2026-03-11
 
 ### Fixed

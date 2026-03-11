@@ -7,12 +7,12 @@
     "url": "https://github.com/CorantGmbH/mcp-airq-cloud",
     "source": "github"
   },
-  "version": "0.1.4",
+  "version": "1.0.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-airq-cloud",
-      "version": "0.1.4",
+      "version": "1.0.0",
       "transport": {
         "type": "stdio"
       },

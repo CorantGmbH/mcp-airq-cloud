@@ -272,3 +272,96 @@ async def test_get_air_quality_history_from_after_to(mock_ctx):
         to_datetime="2026-03-10T15:00:00+00:00",
     )
     assert "before" in result
+
+
+async def test_get_air_quality_history_sensors_filter(mock_ctx, mock_cloud_device):
+    """get_air_quality_history filters to requested sensors only."""
+    mock_cloud_device.get_data_timerange.return_value = [
+        {"temperature": 22.0, "co2": 400, "pm2_5": 3.1, "timestamp": 1000},
+        {"temperature": 23.0, "co2": 420, "pm2_5": 2.8, "timestamp": 2000},
+    ]
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await get_air_quality_history(mock_ctx, sensors=["pm2_5"])
+        data = json.loads(result)
+        for entry in data["data"]:
+            assert "pm2_5" in entry
+            assert "timestamp" in entry
+            assert "temperature" not in entry
+            assert "co2" not in entry
+
+
+async def test_get_air_quality_history_sensors_case_insensitive(
+    mock_ctx, mock_cloud_device
+):
+    """get_air_quality_history sensor filter is case-insensitive."""
+    mock_cloud_device.get_data_timerange.return_value = [
+        {"CO2": 400, "Temperature": 22.0, "timestamp": 1000},
+    ]
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await get_air_quality_history(mock_ctx, sensors=["co2"])
+        data = json.loads(result)
+        assert "CO2" in data["data"][0]
+        assert "Temperature" not in data["data"][0]
+
+
+async def test_get_air_quality_history_max_points(mock_ctx, mock_cloud_device):
+    """get_air_quality_history downsamples to max_points."""
+    mock_cloud_device.get_data_timerange.return_value = [
+        {"temperature": 20.0 + i * 0.1, "timestamp": 1000 + i * 1000}
+        for i in range(100)
+    ]
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await get_air_quality_history(mock_ctx, max_points=10)
+        data = json.loads(result)
+        assert data["count"] == 10
+        assert len(data["data"]) == 10
+
+
+async def test_get_air_quality_history_max_points_no_effect_when_fewer(
+    mock_ctx, mock_cloud_device
+):
+    """get_air_quality_history does not upsample when fewer points than max_points."""
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await get_air_quality_history(mock_ctx, max_points=100)
+        data = json.loads(result)
+        assert data["count"] == 2  # original 2 readings
+
+
+async def test_get_air_quality_history_sensors_and_max_points_combined(
+    mock_ctx, mock_cloud_device
+):
+    """get_air_quality_history applies both sensors filter and max_points."""
+    mock_cloud_device.get_data_timerange.return_value = [
+        {"temperature": 20.0 + i, "pm10": float(i), "timestamp": 1000 + i * 1000}
+        for i in range(50)
+    ]
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await get_air_quality_history(
+            mock_ctx, sensors=["pm10"], max_points=5
+        )
+        data = json.loads(result)
+        assert data["count"] == 5
+        for entry in data["data"]:
+            assert "pm10" in entry
+            assert "timestamp" in entry
+            assert "temperature" not in entry
