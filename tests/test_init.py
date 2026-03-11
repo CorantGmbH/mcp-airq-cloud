@@ -19,3 +19,11 @@ def test_prompts_return_strings():
     """Sensor guide prompt returns a non-empty string."""
     assert isinstance(airq_sensor_guide(), str)
     assert len(airq_sensor_guide()) > 0
+
+
+def test_build_sensor_guide_no_matching_keys():
+    """build_sensor_guide returns empty string when no sensor keys match."""
+    from mcp_airq_cloud.guides import build_sensor_guide
+
+    result = build_sensor_guide({"unknown_sensor_xyz"})
+    assert result == ""

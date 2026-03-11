@@ -246,3 +246,29 @@ async def test_get_air_quality_history_includes_sensor_guide(
         result = await get_air_quality_history(mock_ctx)
         data = json.loads(result)
         assert "_sensor_guide" in data
+
+
+async def test_get_air_quality_history_naive_to_datetime(mock_ctx, mock_cloud_device):
+    """get_air_quality_history attaches UTC timezone to a naive to_datetime."""
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await get_air_quality_history(
+            mock_ctx,
+            from_datetime="2026-03-10T12:00:00+00:00",
+            to_datetime="2026-03-10T15:00:00",  # naive — no timezone
+        )
+        data = json.loads(result)
+        assert data["count"] == 2
+
+
+async def test_get_air_quality_history_from_after_to(mock_ctx):
+    """get_air_quality_history rejects from_datetime >= to_datetime."""
+    result = await get_air_quality_history(
+        mock_ctx,
+        from_datetime="2026-03-10T16:00:00+00:00",
+        to_datetime="2026-03-10T15:00:00+00:00",
+    )
+    assert "before" in result

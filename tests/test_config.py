@@ -170,3 +170,17 @@ def test_file_permissions_warning(monkeypatch, tmp_path, caplog):
     with caplog.at_level("WARNING"):
         load_config()
     assert "readable by group/others" in caplog.text
+
+
+def test_file_permissions_oserror_is_ignored(monkeypatch, tmp_path):
+    """OSError during permission check is silently ignored."""
+    from unittest.mock import patch
+
+    config_file = tmp_path / "devices.json"
+    config_file.write_text(
+        json.dumps([{"id": DEVICE_ID, "api_key": "key", "name": "Test"}])
+    )
+    monkeypatch.setenv("AIRQ_CLOUD_CONFIG_FILE", str(config_file))
+    with patch("os.stat", side_effect=OSError("permission denied")):
+        configs = load_config()
+    assert configs[0].name == "Test"

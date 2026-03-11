@@ -1,5 +1,13 @@
 # mcp-airq-cloud
 
+![MCP](https://img.shields.io/badge/MCP-compatible-purple)
+[![PyPI](https://img.shields.io/pypi/v/mcp-airq-cloud)](https://pypi.org/project/mcp-airq-cloud/)
+[![Total Downloads](https://img.shields.io/pepy/dt/mcp-airq-cloud)](https://pepy.tech/project/mcp-airq-cloud)
+[![Python](https://img.shields.io/pypi/pyversions/mcp-airq-cloud)](https://pypi.org/project/mcp-airq-cloud/)
+[![License](https://img.shields.io/pypi/l/mcp-airq-cloud)](LICENSE)
+[![Tests](https://github.com/CorantGmbH/mcp-airq-cloud/actions/workflows/tests.yml/badge.svg)](https://github.com/CorantGmbH/mcp-airq-cloud/actions/workflows/tests.yml)
+[![Coverage](https://codecov.io/gh/CorantGmbH/mcp-airq-cloud/branch/main/graph/badge.svg)](https://codecov.io/gh/CorantGmbH/mcp-airq-cloud)
+
 MCP server for the [air-Q](https://www.air-q.com) Cloud API — access air quality data from anywhere.
 
 Unlike [mcp-airq](https://github.com/CorantGmbH/mcp-airq) (which communicates directly with devices on the local network), this server uses the **air-Q Cloud REST API** to retrieve sensor data remotely.
