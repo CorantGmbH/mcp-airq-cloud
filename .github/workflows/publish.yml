@@ -1,0 +1,92 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Validate release tag matches package version
+        run: |
+          python3 - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          release_tag = os.environ["RELEASE_TAG"]
+          release_version = release_tag[1:] if release_tag.startswith("v") else release_tag
+          project_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+
+          if release_version != project_version:
+              raise SystemExit(
+                  f"Release tag {release_tag!r} does not match project version {project_version!r}"
+              )
+
+          print(f"Validated release tag {release_tag} == project version {project_version}")
+          PY
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+
+      - name: Install hatch
+        run: pip install hatch
+
+      - name: Build package
+        run: hatch build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Set MCP Registry version metadata
+        run: |
+          python3 - <<'PY'
+          import json
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          path = Path("server.json")
+          data = json.loads(path.read_text())
+          data["version"] = version
+          for package in data.get("packages", []):
+              package["version"] = version
+          path.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish

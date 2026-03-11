@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.CorantGmbH/mcp-airq-cloud",
+  "title": "air-Q Cloud",
+  "description": "MCP server for air-Q Cloud API — access air quality data from anywhere",
+  "repository": {
+    "url": "https://github.com/CorantGmbH/mcp-airq-cloud",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-airq-cloud",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "AIRQ_CLOUD_CONFIG_FILE",
+          "description": "Path to the air-Q Cloud device configuration JSON file",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "AIRQ_CLOUD_DEVICES",
+          "description": "Inline JSON array with configured air-Q Cloud devices",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "AIRQ_CLOUD_API_KEY",
+          "description": "Global fallback API key (used when per-device api_key is omitted)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
