@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.2] - 2026-03-11
+
+### Fixed
+
+- Add `mcp-name` comment to README for MCP Registry ownership validation
+
 ## [0.1.1] - 2026-03-11
 
 ### Changed
@@ -11,6 +17,7 @@
 ## [0.1.0] - 2026-03-11
 
 ### Added
+
 - Initial release with 3 read-only tools via the air-Q Cloud API
 - `list_devices` — list configured cloud devices
 - `get_air_quality` — get latest sensor data (supports device/location/group selection)

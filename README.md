@@ -12,6 +12,8 @@ MCP server for the [air-Q](https://www.air-q.com) Cloud API — access air quali
 
 Unlike [mcp-airq](https://github.com/CorantGmbH/mcp-airq) (which communicates directly with devices on the local network), this server uses the **air-Q Cloud REST API** to retrieve sensor data remotely.
 
+<!-- mcp-name: io.github.CorantGmbH/mcp-airq-cloud -->
+
 ## Tools
 
 | Tool | Description |
