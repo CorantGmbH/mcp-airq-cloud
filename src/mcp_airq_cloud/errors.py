@@ -15,7 +15,7 @@ def handle_cloud_errors(fn: Callable) -> Callable:
     """
 
     @functools.wraps(fn)
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):  # pylint: disable=too-many-return-statements
         try:
             return await fn(*args, **kwargs)
         except ValueError as exc:

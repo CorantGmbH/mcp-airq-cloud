@@ -85,6 +85,33 @@ async def get_air_quality(
     return json.dumps(data, indent=2, default=str)
 
 
+def _parse_time_range(
+    now: datetime,
+    last_hours: float | None,
+    from_datetime: str | None,
+    to_datetime: str | None,
+) -> tuple[datetime, datetime] | str:
+    """Parse time range parameters. Returns (from_dt, to_dt) or an error string."""
+    if from_datetime is not None:
+        from_dt = datetime.fromisoformat(from_datetime)
+        if from_dt.tzinfo is None:
+            from_dt = from_dt.replace(tzinfo=timezone.utc)
+        to_dt = now
+        if to_datetime is not None:
+            to_dt = datetime.fromisoformat(to_datetime)
+            if to_dt.tzinfo is None:
+                to_dt = to_dt.replace(tzinfo=timezone.utc)
+    else:
+        hours = last_hours if last_hours is not None else 1.0
+        if hours <= 0:
+            return "last_hours must be positive."
+        from_dt = now - timedelta(hours=hours)
+        to_dt = now
+    if from_dt >= to_dt:
+        return "from_datetime must be before to_datetime."
+    return from_dt, to_dt
+
+
 @mcp.tool(annotations=READ_ONLY)
 @handle_cloud_errors
 async def get_air_quality_history(
@@ -107,35 +134,17 @@ async def get_air_quality_history(
     mgr = _manager(ctx)
     cloud = mgr.resolve(device)
 
-    now = datetime.now(timezone.utc)
-
-    if from_datetime is not None:
-        from_dt = datetime.fromisoformat(from_datetime)
-        if from_dt.tzinfo is None:
-            from_dt = from_dt.replace(tzinfo=timezone.utc)
-        to_dt = now
-        if to_datetime is not None:
-            to_dt = datetime.fromisoformat(to_datetime)
-            if to_dt.tzinfo is None:
-                to_dt = to_dt.replace(tzinfo=timezone.utc)
-    else:
-        hours = last_hours if last_hours is not None else 1.0
-        if hours <= 0:
-            return "last_hours must be positive."
-        from_dt = now - timedelta(hours=hours)
-        to_dt = now
-
-    if from_dt >= to_dt:
-        return "from_datetime must be before to_datetime."
+    time_range = _parse_time_range(
+        datetime.now(timezone.utc), last_hours, from_datetime, to_datetime
+    )
+    if isinstance(time_range, str):
+        return time_range
+    from_dt, to_dt = time_range
 
     from_ms = int(from_dt.timestamp() * 1000)
     to_ms = int(to_dt.timestamp() * 1000)
 
     data = await cloud.get_data_timerange(from_ms, to_ms)
-
-    all_keys: set[str] = set()
-    for entry in data:
-        all_keys.update(entry.keys())
 
     result: dict[str, object] = {
         "from": from_dt.isoformat(),
@@ -143,8 +152,7 @@ async def get_air_quality_history(
         "count": len(data),
         "data": data,
     }
-
-    guide = build_sensor_guide(all_keys)
+    guide = build_sensor_guide(set().union(*(entry.keys() for entry in data)))
     if guide:
         result["_sensor_guide"] = guide
 

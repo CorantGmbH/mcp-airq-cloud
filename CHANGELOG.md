@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4] - 2026-03-11
+
+### Fixed
+
+- Resolve pylint `too-many-return-statements` in `errors.py` (disable inline)
+- Resolve pylint `too-many-locals` in `get_air_quality_history` by extracting `_parse_time_range` helper
+
 ## [0.1.3] - 2026-03-11
 
 ### Added
