@@ -37,6 +37,9 @@ def _warn_if_world_readable(path: str) -> None:
         pass  # file access errors are handled later when opening the file
 
 
+DEFAULT_CONFIG_FILE = os.path.expanduser("~/.config/airq-cloud-devices.json")
+
+
 def load_config() -> list[DeviceConfig]:
     """Load device configs from AIRQ_CLOUD_DEVICES env var or AIRQ_CLOUD_CONFIG_FILE.
 
@@ -44,6 +47,7 @@ def load_config() -> list[DeviceConfig]:
     and optional 'name' fields.
 
     AIRQ_CLOUD_CONFIG_FILE: path to a JSON file with the same structure.
+    Falls back to ~/.config/airq-cloud-devices.json if neither env var is set.
 
     AIRQ_CLOUD_API_KEY: global fallback API key used when a device entry
     does not include its own 'api_key'.
@@ -54,10 +58,14 @@ def load_config() -> list[DeviceConfig]:
     if raw is None:
         config_file = os.environ.get("AIRQ_CLOUD_CONFIG_FILE")
         if config_file is None:
-            raise ValueError(
-                "No air-Q Cloud devices configured. Set AIRQ_CLOUD_DEVICES env var "
-                "(JSON array) or AIRQ_CLOUD_CONFIG_FILE (path to JSON file)."
-            )
+            if os.path.exists(DEFAULT_CONFIG_FILE):
+                config_file = DEFAULT_CONFIG_FILE
+            else:
+                raise ValueError(
+                    "No air-Q Cloud devices configured. Set AIRQ_CLOUD_DEVICES env var "
+                    "(JSON array) or AIRQ_CLOUD_CONFIG_FILE (path to JSON file), "
+                    f"or create {DEFAULT_CONFIG_FILE}."
+                )
         _warn_if_world_readable(config_file)
         with open(config_file, encoding="utf-8") as f:
             raw = f.read()

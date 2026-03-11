@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.3] - 2026-03-11
+
+### Added
+
+- Default config file path: `~/.config/airq-cloud-devices.json` is loaded automatically if no environment variable is set
+
 ## [0.1.2] - 2026-03-11
 
 ### Fixed

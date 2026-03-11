@@ -48,13 +48,23 @@ You need a **Cloud API key** and the **32-character device ID** for each device.
 export AIRQ_CLOUD_DEVICES='[{"id": "de45d2ed777780c96c0deae7a220b745", "api_key": "your-api-key", "name": "Living Room"}]'
 ```
 
-### Option 2: Config file
+### Option 2: Default config file (recommended)
+
+Place a JSON file at `~/.config/airq-cloud-devices.json` — no environment variable needed:
+
+```json
+[
+  {"id": "de45d2ed777780c96c0deae7a220b745", "api_key": "your-api-key", "name": "Living Room"}
+]
+```
+
+### Option 3: Custom config file path
 
 ```bash
 export AIRQ_CLOUD_CONFIG_FILE=/path/to/devices.json
 ```
 
-### Option 3: Global API key
+### Option 4: Global API key
 
 If all devices share the same API key, set it once:
 

@@ -123,8 +123,11 @@ def test_load_from_file(monkeypatch, tmp_path):
     assert configs[0].name == "File"
 
 
-def test_no_config_raises():
-    """Raise ValueError when no config is set."""
+def test_no_config_raises(monkeypatch):
+    """Raise ValueError when no config is set and default file does not exist."""
+    import mcp_airq_cloud.config as cfg_module
+
+    monkeypatch.setattr(cfg_module, "DEFAULT_CONFIG_FILE", "/nonexistent/path/airq-cloud-devices.json")
     with pytest.raises(ValueError, match="No air-Q Cloud devices configured"):
         load_config()
 
