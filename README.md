@@ -30,7 +30,7 @@ pip install -e ".[dev]"
 
 ## Configuration
 
-You need a **Cloud API key** and the **32-character device ID** for each device.
+You need a **Cloud API key** and the **32-character device ID** for each device. Both can be obtained at [my.air-q.com](https://my.air-q.com).
 
 ### Option 1: Environment variable (inline JSON)
 
