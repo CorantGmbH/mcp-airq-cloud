@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1] - 2026-03-11
+
+### Changed
+
+- Add badges (MCP, PyPI, downloads, Python, license, tests, coverage) to README
+- Mention my.air-q.com as source for API key and device ID
+- Improve test coverage to 99%
+
 ## [0.1.0] - 2026-03-11
 
 ### Added
