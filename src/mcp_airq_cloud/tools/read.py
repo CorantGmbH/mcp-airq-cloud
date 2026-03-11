@@ -130,7 +130,7 @@ def _downsample(data: list[dict], max_points: int) -> list[dict]:
 
 @mcp.tool(annotations=READ_ONLY)
 @handle_cloud_errors
-async def get_air_quality_history(  # pylint: disable=too-many-arguments
+async def get_air_quality_history(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: Context,
     device: str | None = None,
     last_hours: float | None = None,
