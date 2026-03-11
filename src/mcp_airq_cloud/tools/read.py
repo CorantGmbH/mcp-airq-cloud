@@ -116,10 +116,7 @@ def _parse_time_range(
 def _filter_sensors(data: list[dict], sensors: list[str]) -> list[dict]:
     """Keep only the requested sensor keys (plus datetime/timestamp) in each entry."""
     keep = {s.lower() for s in sensors} | {"datetime", "timestamp", "deviceid"}
-    return [
-        {k: v for k, v in entry.items() if k.lower() in keep}
-        for entry in data
-    ]
+    return [{k: v for k, v in entry.items() if k.lower() in keep} for entry in data]
 
 
 def _downsample(data: list[dict], max_points: int) -> list[dict]:
@@ -133,7 +130,7 @@ def _downsample(data: list[dict], max_points: int) -> list[dict]:
 
 @mcp.tool(annotations=READ_ONLY)
 @handle_cloud_errors
-async def get_air_quality_history(
+async def get_air_quality_history(  # pylint: disable=too-many-arguments
     ctx: Context,
     device: str | None = None,
     last_hours: float | None = None,

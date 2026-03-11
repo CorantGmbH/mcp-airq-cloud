@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh release:*)",
+      "mcp__jcodemunch__index_folder",
+      "Read(//home/daniel/Corant Technik/air-Q/Software-Git/mcp-airq/**)",
+      "Bash(pip install:*)",
+      "Bash(pytest --cov=mcp_airq_cloud --cov-report=term-missing -q)",
+      "Bash(micromamba run:*)",
+      "Bash(~/.local/bin/pytest --cov=mcp_airq_cloud --cov-report=term-missing -q)",
+      "Read(//home/daniel/.local/share/**)",
+      "Read(//home/daniel/**)",
+      "Bash(/home/daniel/micromamba/bin/pytest --cov=mcp_airq_cloud --cov-report=term-missing -q)",
+      "Bash(claude mcp:*)",
+      "Bash(ls ~/.config/airq*)",
+      "Bash(/home/daniel/.local/bin/uvx --help)",
+      "Bash(chmod 600 ~/.config/airq-cloud-devices.json)",
+      "mcp__airq-cloud__get_air_quality",
+      "mcp__airq-cloud__list_devices",
+      "Bash(python -m pytest tests/test_config.py -x -q)",
+      "Bash(pipx runpip:*)",
+      "Read(//usr/**)",
+      "Bash(pipx list:*)",
+      "Bash(~/micromamba/bin/python -m pytest tests/test_config.py -x -q)",
+      "Bash(~/micromamba/bin/python -m pytest -x -q)",
+      "Bash(~/micromamba/bin/pip install:*)",
+      "Bash(~/micromamba/bin/python -m pylint src/mcp_airq_cloud)",
+      "Bash(sed -i 's/version = \"\"0.1.3\"\"/version = \"\"0.1.4\"\"/' pyproject.toml)",
+      "Bash(sed -i 's/\"\"version\"\": \"\"0.1.3\"\"/\"\"version\"\": \"\"0.1.4\"\"/g' server.json)",
+      "Bash(~/micromamba/bin/hatch build:*)",
+      "Bash(~/micromamba/bin/hatch publish:*)"
+    ],
+    "additionalDirectories": [
+      "/home/daniel/.config",
+      "/home/daniel/.claude/projects/-home-daniel-Corant-Technik-air-Q-Software-Git-mcp-airq-cloud"
+    ]
+  }
+}
