@@ -38,18 +38,21 @@ Claude Desktop/Code/Web
 ## Commands
 
 ```bash
-# Install (editable, with dev deps)
-pip install -e ".[dev]"
+# Create/update the project environment
+uv sync --frozen --extra dev
 
 # Run tests
-pytest
+uv run pytest
+
+# Install and run commit hooks
+uv run pre-commit install
+uv run pre-commit run --all-files
 
 # Run the server (STDIO transport)
-mcp-airq-cloud
+uv run mcp-airq-cloud
 
 # Build for distribution
-pip install hatch
-hatch build
+uvx hatch build
 ```
 
 ## Device Configuration
@@ -78,6 +81,11 @@ Global fallback API key: `AIRQ_CLOUD_API_KEY` (used when per-device `api_key` is
 - Tools use docstrings as their MCP description (FastMCP extracts them automatically)
 - Tests use `pytest` + `pytest-asyncio`, mock HTTP methods — no real API key needed
 - Keep the tool layer thin
+
+## Code Quality
+
+- Run `ruff check`, `pyright`, and the relevant tests before committing.
+- Avoid machine-specific Python paths or globally installed lint/test tools.
 
 ## Versioning
 

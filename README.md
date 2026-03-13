@@ -35,7 +35,7 @@ Or install from source:
 ```bash
 git clone https://github.com/CorantGmbH/mcp-airq-cloud.git
 cd mcp-airq-cloud
-pip install -e ".[dev]"
+uv sync --frozen --extra dev
 ```
 
 ## Configuration
@@ -110,8 +110,19 @@ claude mcp add air-Q-Cloud mcp-airq-cloud \
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest
+uv sync --frozen --extra dev
+uv run pre-commit install
+uv run pytest
+```
+
+The repository uses a project-local `.venv` plus `uv.lock` for reproducible
+tooling. Run developer commands through `uv run`, for example:
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pre-commit run --all-files
 ```
 
 ## License

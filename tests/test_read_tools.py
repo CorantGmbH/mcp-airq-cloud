@@ -1,6 +1,5 @@
 """Tests for read-only tools."""
 
-# pylint: disable=redefined-outer-name
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -167,9 +166,7 @@ async def test_get_air_quality_multiple_selectors_rejected(mock_ctx):
     assert "at most one" in result
 
 
-async def test_get_air_quality_history_default_last_hour(
-    mock_ctx, mock_cloud_device
-):
+async def test_get_air_quality_history_default_last_hour(mock_ctx, mock_cloud_device):
     """get_air_quality_history defaults to last 1 hour."""
     with patch.object(
         mock_ctx.request_context.lifespan_context,
@@ -183,9 +180,7 @@ async def test_get_air_quality_history_default_last_hour(
         mock_cloud_device.get_data_timerange.assert_awaited_once()
 
 
-async def test_get_air_quality_history_custom_hours(
-    mock_ctx, mock_cloud_device
-):
+async def test_get_air_quality_history_custom_hours(mock_ctx, mock_cloud_device):
     """get_air_quality_history accepts custom last_hours."""
     with patch.object(
         mock_ctx.request_context.lifespan_context,
@@ -221,9 +216,7 @@ async def test_get_air_quality_history_from_only(mock_ctx, mock_cloud_device):
         "resolve",
         return_value=mock_cloud_device,
     ):
-        result = await get_air_quality_history(
-            mock_ctx, from_datetime="2026-03-10T14:00:00"
-        )
+        result = await get_air_quality_history(mock_ctx, from_datetime="2026-03-10T14:00:00")
         data = json.loads(result)
         assert data["count"] == 2
 
@@ -234,9 +227,7 @@ async def test_get_air_quality_history_negative_hours(mock_ctx):
     assert "positive" in result
 
 
-async def test_get_air_quality_history_includes_sensor_guide(
-    mock_ctx, mock_cloud_device
-):
+async def test_get_air_quality_history_includes_sensor_guide(mock_ctx, mock_cloud_device):
     """get_air_quality_history includes a _sensor_guide field."""
     with patch.object(
         mock_ctx.request_context.lifespan_context,
@@ -294,9 +285,7 @@ async def test_get_air_quality_history_sensors_filter(mock_ctx, mock_cloud_devic
         assert "co2" not in cols
 
 
-async def test_get_air_quality_history_sensors_case_insensitive(
-    mock_ctx, mock_cloud_device
-):
+async def test_get_air_quality_history_sensors_case_insensitive(mock_ctx, mock_cloud_device):
     """get_air_quality_history sensor filter is case-insensitive."""
     mock_cloud_device.get_data_timerange.return_value = [
         {"co2": 400, "temperature": 22.0, "timestamp": 1000},
@@ -316,8 +305,7 @@ async def test_get_air_quality_history_sensors_case_insensitive(
 async def test_get_air_quality_history_max_points(mock_ctx, mock_cloud_device):
     """get_air_quality_history downsamples to max_points."""
     mock_cloud_device.get_data_timerange.return_value = [
-        {"temperature": 20.0 + i * 0.1, "timestamp": 1000 + i * 1000}
-        for i in range(100)
+        {"temperature": 20.0 + i * 0.1, "timestamp": 1000 + i * 1000} for i in range(100)
     ]
     with patch.object(
         mock_ctx.request_context.lifespan_context,
@@ -330,9 +318,7 @@ async def test_get_air_quality_history_max_points(mock_ctx, mock_cloud_device):
         assert len(data["columns"]["temperature"]) == 10
 
 
-async def test_get_air_quality_history_max_points_no_effect_when_fewer(
-    mock_ctx, mock_cloud_device
-):
+async def test_get_air_quality_history_max_points_no_effect_when_fewer(mock_ctx, mock_cloud_device):
     """get_air_quality_history does not upsample when fewer points than max_points."""
     with patch.object(
         mock_ctx.request_context.lifespan_context,
@@ -344,22 +330,17 @@ async def test_get_air_quality_history_max_points_no_effect_when_fewer(
         assert data["count"] == 2  # original 2 readings
 
 
-async def test_get_air_quality_history_sensors_and_max_points_combined(
-    mock_ctx, mock_cloud_device
-):
+async def test_get_air_quality_history_sensors_and_max_points_combined(mock_ctx, mock_cloud_device):
     """get_air_quality_history applies both sensors filter and max_points."""
     mock_cloud_device.get_data_timerange.return_value = [
-        {"temperature": 20.0 + i, "pm10": float(i), "timestamp": 1000 + i * 1000}
-        for i in range(50)
+        {"temperature": 20.0 + i, "pm10": float(i), "timestamp": 1000 + i * 1000} for i in range(50)
     ]
     with patch.object(
         mock_ctx.request_context.lifespan_context,
         "resolve",
         return_value=mock_cloud_device,
     ):
-        result = await get_air_quality_history(
-            mock_ctx, sensors=["pm10"], max_points=5
-        )
+        result = await get_air_quality_history(mock_ctx, sensors=["pm10"], max_points=5)
         data = json.loads(result)
         assert data["count"] == 5
         cols = data["columns"]

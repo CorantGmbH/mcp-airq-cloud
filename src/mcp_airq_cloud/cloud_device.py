@@ -8,9 +8,7 @@ BASE_URL = "https://air-q-cloud.de/open_api/v3"
 class CloudDevice:
     """Async client for one air-Q device via the Cloud API."""
 
-    def __init__(
-        self, device_id: str, api_key: str, session: aiohttp.ClientSession
-    ) -> None:
+    def __init__(self, device_id: str, api_key: str, session: aiohttp.ClientSession) -> None:
         self._device_id = device_id
         self._api_key = api_key
         self._session = session
@@ -18,9 +16,7 @@ class CloudDevice:
     async def get_latest_data(self) -> dict:
         """Get the most recent sensor data for this device."""
         url = f"{BASE_URL}/devices/{self._device_id}/sensordata/latest"
-        async with self._session.get(
-            url, headers={"Api-Key": self._api_key}
-        ) as resp:
+        async with self._session.get(url, headers={"Api-Key": self._api_key}) as resp:
             resp.raise_for_status()
             return await resp.json()
 
@@ -28,8 +24,6 @@ class CloudDevice:
         """Get sensor data within a time range (millisecond timestamps)."""
         url = f"{BASE_URL}/devices/{self._device_id}/sensordata/timerange"
         params = {"f": str(from_ms), "t": str(to_ms)}
-        async with self._session.get(
-            url, headers={"Api-Key": self._api_key}, params=params
-        ) as resp:
+        async with self._session.get(url, headers={"Api-Key": self._api_key}, params=params) as resp:
             resp.raise_for_status()
             return await resp.json()

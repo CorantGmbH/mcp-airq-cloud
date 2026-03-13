@@ -120,7 +120,8 @@ def _filter_sensors(data: list[dict], sensors: list[str]) -> list[dict]:
 
 
 def _check_sensors_present(
-    data: list[dict], sensors: list[str],
+    data: list[dict],
+    sensors: list[str],
 ) -> str | None:
     """Return an error string if any requested sensors are missing from the data."""
     if not data or not sensors:
@@ -167,7 +168,7 @@ def _to_columnar(data: list[dict]) -> dict[str, list]:
 
 @mcp.tool(annotations=READ_ONLY)
 @handle_cloud_errors
-async def get_air_quality_history(  # pylint: disable=too-many-arguments, too-many-locals
+async def get_air_quality_history(
     ctx: Context,
     device: str | None = None,
     last_hours: float | None = None,
@@ -223,9 +224,7 @@ async def get_air_quality_history(  # pylint: disable=too-many-arguments, too-ma
     mgr = _manager(ctx)
     cloud = mgr.resolve(device)
 
-    time_range = _parse_time_range(
-        datetime.now(timezone.utc), last_hours, from_datetime, to_datetime
-    )
+    time_range = _parse_time_range(datetime.now(timezone.utc), last_hours, from_datetime, to_datetime)
     if isinstance(time_range, str):
         return time_range
     from_dt, to_dt = time_range

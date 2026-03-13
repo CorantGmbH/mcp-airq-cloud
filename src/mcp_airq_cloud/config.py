@@ -95,8 +95,7 @@ def load_config() -> list[DeviceConfig]:
         api_key = entry.get("api_key", global_api_key)
         if not api_key:
             raise ValueError(
-                f"Device entry {i} has no 'api_key' and AIRQ_CLOUD_API_KEY "
-                f"is not set. Each device needs an API key."
+                f"Device entry {i} has no 'api_key' and AIRQ_CLOUD_API_KEY is not set. Each device needs an API key."
             )
 
         devices.append(

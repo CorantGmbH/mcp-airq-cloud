@@ -15,7 +15,7 @@ def handle_cloud_errors(fn: Callable) -> Callable:
     """
 
     @functools.wraps(fn)
-    async def wrapper(*args, **kwargs):  # pylint: disable=too-many-return-statements
+    async def wrapper(*args, **kwargs):
         try:
             return await fn(*args, **kwargs)
         except ValueError as exc:
@@ -40,9 +40,7 @@ def handle_cloud_errors(fn: Callable) -> Callable:
             )
             return f"Cloud API error (HTTP {exc.status}): {exc.message}"
         except aiohttp.ClientError as exc:
-            logger.error(
-                "Network error in %s: %s", fn.__name__, exc, exc_info=True
-            )
+            logger.error("Network error in %s: %s", fn.__name__, exc, exc_info=True)
             return f"Network error: {type(exc).__name__}: {exc}"
         except TimeoutError:
             logger.warning("Timeout in %s", fn.__name__)

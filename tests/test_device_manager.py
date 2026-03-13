@@ -1,7 +1,8 @@
 """Tests for DeviceManager device resolution."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from mcp_airq_cloud.cloud_device import CloudDevice
 from mcp_airq_cloud.config import DeviceConfig
@@ -26,13 +27,19 @@ def single_device_configs():
 def multi_device_configs():
     return [
         DeviceConfig(
-            DEVICE_ID_A, "key1", "Living Room",
-            location="Wohnzimmer", group="zu Hause",
+            DEVICE_ID_A,
+            "key1",
+            "Living Room",
+            location="Wohnzimmer",
+            group="zu Hause",
         ),
         DeviceConfig(DEVICE_ID_B, "key2", "Office", group="Arbeit"),
         DeviceConfig(
-            DEVICE_ID_C, "key3", "Bedroom",
-            location="Wohnzimmer", group="zu Hause",
+            DEVICE_ID_C,
+            "key3",
+            "Bedroom",
+            location="Wohnzimmer",
+            group="zu Hause",
         ),
     ]
 

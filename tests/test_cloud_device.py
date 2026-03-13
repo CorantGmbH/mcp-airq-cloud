@@ -2,8 +2,8 @@
 
 import re
 
-import pytest
 import aiohttp
+import pytest
 from aioresponses import aioresponses
 
 from mcp_airq_cloud.cloud_device import BASE_URL, CloudDevice

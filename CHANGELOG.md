@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.1] - 2026-03-13
+
+### Changed
+
+- Development workflow now uses a project-local `.venv` plus `uv.lock` for
+  reproducible environments instead of machine-specific Python/PATH setups.
+- Replaced `pylint` and `black` in local validation with `ruff check` and
+  `ruff format`, and aligned pre-commit plus CI with the same `uv run`-based
+  commands.
+- `pyright` now resolves imports from the repo-local `.venv` instead of
+  absolute user-specific paths.
+
 ## [1.1.0] - 2026-03-13
 
 ### Changed

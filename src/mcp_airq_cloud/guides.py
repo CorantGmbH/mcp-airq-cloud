@@ -230,9 +230,7 @@ _SENSOR_CATEGORIES: list[_Category] = [
         [
             _e("timestamp", "timestamp", "ms", "Unix epoch in milliseconds."),
             _e("uptime", "uptime", "s", "Device runtime since last reboot."),
-            _e(
-                "measuretime", "measuretime", "ms", "Duration of the measurement cycle."
-            ),
+            _e("measuretime", "measuretime", "ms", "Duration of the measurement cycle."),
             _e(
                 "dco2dt",
                 "dco2dt",
@@ -243,8 +241,7 @@ _SENSOR_CATEGORIES: list[_Category] = [
                 "dhdt",
                 "dhdt",
                 "mg/m³/s",
-                "Absolute humidity rate of change."
-                " Used internally for sensor compensation.",
+                "Absolute humidity rate of change. Used internally for sensor compensation.",
             ),
             _e(
                 "deviceid",
@@ -315,8 +312,6 @@ def build_sensor_guide(data_keys: frozenset[str] | set[str]) -> str:
 # ---------------------------------------------------------------------------
 
 # All known sensor keys — used to generate the full (unfiltered) guide.
-_ALL_KEYS: frozenset[str] = frozenset().union(
-    *(keys for _, _, rows in _SENSOR_CATEGORIES for keys, _, _, _ in rows)
-)
+_ALL_KEYS: frozenset[str] = frozenset().union(*(keys for _, _, rows in _SENSOR_CATEGORIES for keys, _, _, _ in rows))
 
 SENSOR_GUIDE = build_sensor_guide(_ALL_KEYS) + _FULL_GUIDE_FOOTER

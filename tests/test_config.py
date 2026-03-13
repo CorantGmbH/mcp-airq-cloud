@@ -1,6 +1,7 @@
 """Tests for config loading."""
 
 import json
+
 import pytest
 
 from mcp_airq_cloud.config import DeviceConfig, load_config
@@ -18,9 +19,7 @@ def clean_env(monkeypatch):
 
 def test_load_from_env_single_device(monkeypatch):
     """Load a single device from AIRQ_CLOUD_DEVICES."""
-    devices_json = json.dumps(
-        [{"id": DEVICE_ID, "api_key": "key123", "name": "MyAirQ"}]
-    )
+    devices_json = json.dumps([{"id": DEVICE_ID, "api_key": "key123", "name": "MyAirQ"}])
     monkeypatch.setenv("AIRQ_CLOUD_DEVICES", devices_json)
     configs = load_config()
     assert len(configs) == 1
@@ -59,9 +58,7 @@ def test_api_key_from_global_env(monkeypatch):
 
 def test_per_device_key_overrides_global(monkeypatch):
     """Per-device api_key takes precedence over global key."""
-    devices_json = json.dumps(
-        [{"id": DEVICE_ID, "api_key": "device_key", "name": "Test"}]
-    )
+    devices_json = json.dumps([{"id": DEVICE_ID, "api_key": "device_key", "name": "Test"}])
     monkeypatch.setenv("AIRQ_CLOUD_DEVICES", devices_json)
     monkeypatch.setenv("AIRQ_CLOUD_API_KEY", "global_key")
     configs = load_config()
@@ -86,9 +83,7 @@ def test_location_is_optional(monkeypatch):
 
 def test_location_is_loaded(monkeypatch):
     """Location is parsed from config."""
-    devices_json = json.dumps(
-        [{"id": DEVICE_ID, "api_key": "key", "location": "Wohnzimmer"}]
-    )
+    devices_json = json.dumps([{"id": DEVICE_ID, "api_key": "key", "location": "Wohnzimmer"}])
     monkeypatch.setenv("AIRQ_CLOUD_DEVICES", devices_json)
     configs = load_config()
     assert configs[0].location == "Wohnzimmer"
@@ -104,9 +99,7 @@ def test_group_is_optional(monkeypatch):
 
 def test_group_is_loaded(monkeypatch):
     """Group is parsed from config."""
-    devices_json = json.dumps(
-        [{"id": DEVICE_ID, "api_key": "key", "group": "zu Hause"}]
-    )
+    devices_json = json.dumps([{"id": DEVICE_ID, "api_key": "key", "group": "zu Hause"}])
     monkeypatch.setenv("AIRQ_CLOUD_DEVICES", devices_json)
     configs = load_config()
     assert configs[0].group == "zu Hause"
@@ -115,9 +108,7 @@ def test_group_is_loaded(monkeypatch):
 def test_load_from_file(monkeypatch, tmp_path):
     """Load from AIRQ_CLOUD_CONFIG_FILE."""
     config_file = tmp_path / "devices.json"
-    config_file.write_text(
-        json.dumps([{"id": DEVICE_ID, "api_key": "fkey", "name": "File"}])
-    )
+    config_file.write_text(json.dumps([{"id": DEVICE_ID, "api_key": "fkey", "name": "File"}]))
     monkeypatch.setenv("AIRQ_CLOUD_CONFIG_FILE", str(config_file))
     configs = load_config()
     assert configs[0].name == "File"
@@ -155,9 +146,7 @@ def test_missing_id_raises(monkeypatch):
 
 def test_invalid_id_length_raises(monkeypatch):
     """Raise ValueError when id is not 32 characters."""
-    monkeypatch.setenv(
-        "AIRQ_CLOUD_DEVICES", json.dumps([{"id": "short", "api_key": "key"}])
-    )
+    monkeypatch.setenv("AIRQ_CLOUD_DEVICES", json.dumps([{"id": "short", "api_key": "key"}]))
     with pytest.raises(ValueError, match="32-character"):
         load_config()
 
@@ -165,9 +154,7 @@ def test_invalid_id_length_raises(monkeypatch):
 def test_file_permissions_warning(monkeypatch, tmp_path, caplog):
     """Warn when config file is world-readable."""
     config_file = tmp_path / "devices.json"
-    config_file.write_text(
-        json.dumps([{"id": DEVICE_ID, "api_key": "key", "name": "Test"}])
-    )
+    config_file.write_text(json.dumps([{"id": DEVICE_ID, "api_key": "key", "name": "Test"}]))
     config_file.chmod(0o644)
     monkeypatch.setenv("AIRQ_CLOUD_CONFIG_FILE", str(config_file))
     with caplog.at_level("WARNING"):
@@ -180,9 +167,7 @@ def test_file_permissions_oserror_is_ignored(monkeypatch, tmp_path):
     from unittest.mock import patch
 
     config_file = tmp_path / "devices.json"
-    config_file.write_text(
-        json.dumps([{"id": DEVICE_ID, "api_key": "key", "name": "Test"}])
-    )
+    config_file.write_text(json.dumps([{"id": DEVICE_ID, "api_key": "key", "name": "Test"}]))
     monkeypatch.setenv("AIRQ_CLOUD_CONFIG_FILE", str(config_file))
     with patch("os.stat", side_effect=OSError("permission denied")):
         configs = load_config()

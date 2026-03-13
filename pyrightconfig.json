@@ -1,12 +1,11 @@
 {
-  "include": ["src"],
+  "include": ["src", "tests"],
   "exclude": [
     "**/__pycache__/**",
     "**/.pytest_cache/**",
     "**/.github/**"
   ],
-  "extraPaths": [
-    "/home/daniel/micromamba/lib/python3.11/site-packages"
-  ],
+  "venvPath": ".",
+  "venv": ".venv",
   "reportMissingImports": true
 }

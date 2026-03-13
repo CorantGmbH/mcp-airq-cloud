@@ -1,38 +1,33 @@
 fail_fast: true
 repos:
-  - repo: https://github.com/psf/black
-    rev: 25.12.0
-    hooks:
-      - id: black
-        name: black
-        stages: [pre-commit]
-        language_version: python3.11
   - repo: local
     hooks:
-      - id: pylint
-        name: pylint
+      - id: ruff-format
+        name: ruff format
         stages: [pre-commit]
         types: [python]
-        entry: pylint
+        entry: uv run --frozen ruff format
         language: system
-        pass_filenames: true
-        args: ["--jobs=4"]
+      - id: ruff-check
+        name: ruff check
+        stages: [pre-commit]
+        types: [python]
+        entry: uv run --frozen ruff check --fix
+        language: system
       - id: pytest
         name: pytest
         stages: [pre-commit]
         types: [python]
-        entry: pytest
+        entry: uv run --frozen pytest
         language: system
         pass_filenames: false
         always_run: true
         args: ["--exitfirst", "-n", "auto"]
-  - repo: local
-    hooks:
       - id: pyright
         name: pyright
         stages: [pre-commit]
         types: [python]
-        entry: pyright
+        entry: uv run --frozen pyright
         language: system
         pass_filenames: false
         always_run: true

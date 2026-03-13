@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-airq-cloud"
-version = "1.1.0"
+version = "1.1.1"
 description = "MCP server for air-Q Cloud API — access air quality data from anywhere"
 readme = "README.md"
 license = "Apache-2.0"
@@ -31,7 +31,7 @@ Changelog = "https://github.com/CorantGmbH/mcp-airq-cloud/blob/main/CHANGELOG.md
 mcp-airq-cloud = "mcp_airq_cloud.server:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0.2", "pytest-asyncio>=0.21", "pytest-xdist>=3.0", "aioresponses>=0.7", "pytest-cov>=6.0", "black>=25.0", "pylint>=4.0", "pyright>=1.1"]
+dev = ["pytest>=9.0.2", "pytest-asyncio>=0.21", "pytest-xdist>=3.0", "aioresponses>=0.7", "pytest-cov>=6.0", "pre-commit>=4.0", "pyright>=1.1", "ruff>=0.11.0"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -40,16 +40,12 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["src/mcp_airq_cloud"]
 
-[tool.pylint.format]
-max-line-length = 120
+[tool.ruff]
+line-length = 120
+target-version = "py311"
 
-[tool.pylint.design]
-max-args = 10
-max-positional-arguments = 10
-max-returns = 7
-
-[tool.pylint.messages_control]
-disable = ["cyclic-import"]
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_airq_cloud"]

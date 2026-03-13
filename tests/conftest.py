@@ -1,6 +1,5 @@
 """Shared test fixtures."""
 
-# pylint: disable=redefined-outer-name
 from unittest.mock import MagicMock
 
 import pytest
@@ -38,8 +37,11 @@ def multi_device_configs():
         ),
         DeviceConfig(DEVICE_ID_B, "key2", "Office", group="Arbeit"),
         DeviceConfig(
-            DEVICE_ID_C, "key3", "Bedroom",
-            location="Wohnzimmer", group="zu Hause",
+            DEVICE_ID_C,
+            "key3",
+            "Bedroom",
+            location="Wohnzimmer",
+            group="zu Hause",
         ),
     ]
 
