@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0] - 2026-03-13
+
+### Changed
+
+- `get_air_quality_history` now returns column-oriented JSON (key `columns`
+  instead of `data`), compact separators, and timestamps in Unix seconds
+  (divided by 1000). Matches the format of mcp-airq 1.3.0.
+- `get_air_quality_history` validates requested sensors and returns a clear
+  error message if any are unavailable, listing available sensors.
+- Sensor guide display names normalized to lowercase (e.g. `TypPS` → `typps`,
+  `ch2o_M10` → `ch2o_m10`) to match Cloud API key casing.
+- Sensor name docstring updated to lowercase throughout.
+
 ## [1.0.0] - 2026-03-11
 
 ### Added

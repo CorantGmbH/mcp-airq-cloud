@@ -179,7 +179,7 @@ async def test_get_air_quality_history_default_last_hour(
         result = await get_air_quality_history(mock_ctx)
         data = json.loads(result)
         assert data["count"] == 2
-        assert len(data["data"]) == 2
+        assert "columns" in data
         mock_cloud_device.get_data_timerange.assert_awaited_once()
 
 
@@ -287,11 +287,11 @@ async def test_get_air_quality_history_sensors_filter(mock_ctx, mock_cloud_devic
     ):
         result = await get_air_quality_history(mock_ctx, sensors=["pm2_5"])
         data = json.loads(result)
-        for entry in data["data"]:
-            assert "pm2_5" in entry
-            assert "timestamp" in entry
-            assert "temperature" not in entry
-            assert "co2" not in entry
+        cols = data["columns"]
+        assert "pm2_5" in cols
+        assert "timestamp" in cols
+        assert "temperature" not in cols
+        assert "co2" not in cols
 
 
 async def test_get_air_quality_history_sensors_case_insensitive(
@@ -299,17 +299,18 @@ async def test_get_air_quality_history_sensors_case_insensitive(
 ):
     """get_air_quality_history sensor filter is case-insensitive."""
     mock_cloud_device.get_data_timerange.return_value = [
-        {"CO2": 400, "Temperature": 22.0, "timestamp": 1000},
+        {"co2": 400, "temperature": 22.0, "timestamp": 1000},
     ]
     with patch.object(
         mock_ctx.request_context.lifespan_context,
         "resolve",
         return_value=mock_cloud_device,
     ):
-        result = await get_air_quality_history(mock_ctx, sensors=["co2"])
+        result = await get_air_quality_history(mock_ctx, sensors=["CO2"])
         data = json.loads(result)
-        assert "CO2" in data["data"][0]
-        assert "Temperature" not in data["data"][0]
+        cols = data["columns"]
+        assert "co2" in cols
+        assert "temperature" not in cols
 
 
 async def test_get_air_quality_history_max_points(mock_ctx, mock_cloud_device):
@@ -326,7 +327,7 @@ async def test_get_air_quality_history_max_points(mock_ctx, mock_cloud_device):
         result = await get_air_quality_history(mock_ctx, max_points=10)
         data = json.loads(result)
         assert data["count"] == 10
-        assert len(data["data"]) == 10
+        assert len(data["columns"]["temperature"]) == 10
 
 
 async def test_get_air_quality_history_max_points_no_effect_when_fewer(
@@ -361,7 +362,7 @@ async def test_get_air_quality_history_sensors_and_max_points_combined(
         )
         data = json.loads(result)
         assert data["count"] == 5
-        for entry in data["data"]:
-            assert "pm10" in entry
-            assert "timestamp" in entry
-            assert "temperature" not in entry
+        cols = data["columns"]
+        assert "pm10" in cols
+        assert "timestamp" in cols
+        assert "temperature" not in cols
