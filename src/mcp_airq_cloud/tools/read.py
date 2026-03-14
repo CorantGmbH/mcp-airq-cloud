@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import aiohttp
-
 from airq_mcp_timeseries.models import (
     PlotRequest,
     PlotStyle,

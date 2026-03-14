@@ -12,6 +12,9 @@ MCP server for the [air-Q](https://www.air-q.com) Cloud API — access air quali
 
 Unlike [mcp-airq](https://github.com/CorantGmbH/mcp-airq) (which communicates directly with devices on the local network), this server uses the **air-Q Cloud REST API** to retrieve sensor data remotely.
 
+The same `mcp-airq-cloud` executable also works as a direct CLI when you pass a
+tool name as a subcommand.
+
 <!-- mcp-name: io.github.CorantGmbH/mcp-airq-cloud -->
 
 ## Tools
@@ -36,6 +39,41 @@ Or install from source:
 git clone https://github.com/CorantGmbH/mcp-airq-cloud.git
 cd mcp-airq-cloud
 uv sync --frozen --extra dev
+```
+
+## CLI Usage
+
+Use the same command directly from the shell:
+
+```bash
+mcp-airq-cloud list-devices
+mcp-airq-cloud get-air-quality --device "Living Room"
+mcp-airq-cloud get-air-quality-history --device "Living Room" --last-hours 24 --sensors co2 pm2_5
+mcp-airq-cloud plot-air-quality-history --sensor co2 --device "Living Room" --output co2.png
+```
+
+The CLI subcommands mirror the MCP tool names. Both styles work:
+
+```bash
+mcp-airq-cloud list-devices
+mcp-airq-cloud list_devices
+```
+
+To force MCP server mode from an interactive terminal, run:
+
+```bash
+mcp-airq-cloud serve
+```
+
+The CLI is pipe-friendly: successful command output goes to `stdout`, while
+tool errors go to `stderr` with exit code `1`. Plot commands can also stream
+directly to `stdout`.
+
+```bash
+mcp-airq-cloud get-air-quality --device "Living Room" | jq '.co2'
+mcp-airq-cloud get-air-quality-history --device "Living Room" --compact-json | jq '.columns.co2'
+mcp-airq-cloud get-air-quality-history --device "Living Room" --yaml | yq '.columns.co2'
+mcp-airq-cloud plot-air-quality-history --sensor co2 --device "Living Room" --output - > co2.png
 ```
 
 ## Configuration

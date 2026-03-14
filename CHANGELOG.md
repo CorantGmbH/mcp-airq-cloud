@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.3.0] - 2026-03-14
+
+### Added
+
+- The existing `mcp-airq-cloud` executable now also works as a direct CLI:
+  every MCP tool is available as a terminal subcommand, using either
+  hyphenated command names (for example `list-devices`) or the original MCP
+  tool names (`list_devices`).
+- Added an explicit `mcp-airq-cloud serve` command to force stdio MCP server
+  mode from an interactive terminal.
+
+### Changed
+
+- CLI output is now shell-pipeline friendly: successful data stays on `stdout`,
+  runtime errors go to `stderr`, and command failures return exit code `1`.
+- Added `--compact-json`, `--json`, and `--yaml` output modes for direct CLI
+  usage, making it easy to chain cloud queries with `jq` or `yq`.
+- `plot-air-quality-history` can now stream rendered output directly to
+  `stdout` via `--output -`, enabling shell pipes and redirects such as
+  `> co2.png`.
+
 ## [1.1.1] - 2026-03-13
 
 ### Changed
