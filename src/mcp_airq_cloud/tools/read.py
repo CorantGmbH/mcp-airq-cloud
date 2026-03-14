@@ -3,8 +3,22 @@
 import json
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
+import aiohttp
+
+from airq_mcp_timeseries.models import (
+    PlotRequest,
+    PlotStyle,
+    Selector,
+    SeriesPoint,
+    SeriesSet,
+    TimeSeries,
+)
+from airq_mcp_timeseries.renderers import render
+from airq_mcp_timeseries.services.plot_model import build_plot_model
 from mcp.server.fastmcp import Context
+from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import ToolAnnotations
 
 from mcp_airq_cloud.cloud_device import CloudDevice
@@ -254,3 +268,171 @@ async def get_air_quality_history(
     if guide:
         result["_sensor_guide"] = guide
     return json.dumps(result, separators=(",", ":"), default=str)
+
+
+def _rows_to_series_set(
+    device_label: str,
+    sensor: str,
+    data: list[dict],
+    from_dt: datetime,
+    to_dt: datetime,
+) -> SeriesSet:
+    """Convert raw cloud rows to a SeriesSet for chart rendering."""
+    key = sensor.lower()
+    points = []
+    for row in data:
+        ts_ms = row.get("timestamp", 0)
+        ts_iso = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
+        val_raw = row.get(key)
+        if val_raw is None:
+            val: float | None = None
+        elif isinstance(val_raw, list):
+            val = float(val_raw[0]) if val_raw else None
+        else:
+            try:
+                val = float(val_raw)
+            except (TypeError, ValueError):
+                val = None
+        points.append(SeriesPoint(ts=ts_iso, value=val))
+    ts = TimeSeries(id=device_label, label=device_label, unit=None, points=points)
+    return SeriesSet(
+        metric=key,
+        series=[ts],
+        start=from_dt.isoformat(),
+        end=to_dt.isoformat(),
+    )
+
+
+@mcp.tool(annotations=READ_ONLY, structured_output=False)
+async def plot_air_quality_history(
+    ctx: Context,
+    sensor: str,
+    device: str | None = None,
+    last_hours: float | None = None,
+    from_datetime: str | None = None,
+    to_datetime: str | None = None,
+    title: str | None = None,
+    x_axis_title: str | None = None,
+    y_axis_title: str | None = None,
+    chart_type: Literal["line", "area"] = "area",
+    dark: bool = False,
+    output_format: Literal["png", "html"] = "png",
+    max_points: int = 300,
+) -> Image | str:
+    """Generate a chart of historical air-Q Cloud sensor data.
+
+    WHEN TO USE THIS TOOL: Call this whenever the user asks to see a graph,
+    chart, plot, or visual representation of historical sensor data.
+
+    OUTPUT FORMAT:
+    - "png" (default) — returns an inline image; very token-efficient because
+      the raw data never appears in the conversation. Use this in almost all cases.
+    - "html" — returns a self-contained interactive HTML page (with dark/light
+      toggle). Use only when the user explicitly wants an interactive chart or
+      a downloadable file for claude.ai Canvas/Artifacts.
+
+    REQUIRED
+    - sensor: the sensor key to visualise (one sensor per chart).
+      Examples: "co2", "temperature", "humidity", "pm2_5", "tvoc",
+                "pressure", "sound", "radon", "health", "virus"
+      Only one sensor can be shown per chart. Call the tool multiple times
+      to produce charts for several sensors.
+
+    AXIS LABELS — always set these in the user's current language.
+    The LLM is responsible for choosing correct labels and units because
+    sensor labels and user languages are known only at call time.
+    - title: headline shown above the chart
+        German:  "CO₂-Verlauf Wohnzimmer (letzte 24 h)"
+        English: "CO₂ Trend Living Room (last 24 h)"
+        French:  "Évolution CO₂ Salon (24 dernières h)"
+    - y_axis_title: value-axis label including the unit
+        "CO₂ (ppm)"  |  "Temperatur (°C)"  |  "PM2.5 (µg/m³)"
+        "Humidity (%)"  |  "Sound (dB(A))"  |  "Radon (Bq/m³)"
+    - x_axis_title: time-axis label (optional, leave None to omit)
+        "Zeit"  |  "Time"  |  "Temps"
+
+    TIME RANGE — specify exactly one of:
+    - last_hours: data from the last N hours (default: 24)
+    - from_datetime / to_datetime: ISO 8601 strings
+      (e.g. "2026-03-10T14:00:00" or "2026-03-10T14:00:00+01:00")
+      'from_datetime' takes precedence over 'last_hours'.
+      'to_datetime' defaults to now.
+
+    DEVICE — optional when only one device is configured.
+    Use list_devices to obtain valid names.
+
+    STYLE OPTIONS:
+    - chart_type: "area" (default, filled under the curve) or "line"
+    - dark: True for dark background (default: False / light)
+    - max_points: maximum data points to render (default: 300). For time
+      ranges longer than 4 hours keep this at 300 or lower.
+    """
+    try:
+        mgr = _manager(ctx)
+
+        names = mgr.device_names
+        if device is None and len(names) == 1:
+            device_label = names[0]
+        elif device is not None:
+            device_label = device
+        else:
+            return f"Multiple devices configured. Specify one of: {', '.join(names)}"
+
+        cloud = mgr.resolve(device)
+
+        effective_hours = last_hours if last_hours is not None else 24.0
+        time_range = _parse_time_range(
+            datetime.now(timezone.utc), effective_hours, from_datetime, to_datetime
+        )
+        if isinstance(time_range, str):
+            return time_range
+        from_dt, to_dt = time_range
+
+        from_ms = int(from_dt.timestamp() * 1000)
+        to_ms = int(to_dt.timestamp() * 1000)
+        data = await cloud.get_data_timerange(from_ms, to_ms)
+
+        key = sensor.lower()
+        error = _check_sensors_present(data, [key])
+        if error:
+            return error
+
+        if max_points > 0:
+            data = _downsample(data, max_points)
+
+        series_set = _rows_to_series_set(device_label, key, data, from_dt, to_dt)
+
+        request = PlotRequest(
+            selector=Selector(devices=[device_label]),
+            metric=key,
+            start=from_dt,
+            end=to_dt,
+            chart_type=chart_type,
+            output_format=output_format,
+            style=PlotStyle(
+                title=title,
+                x_axis_title=x_axis_title,
+                y_axis_title=y_axis_title,
+                dark=dark,
+            ),
+        )
+
+        model = build_plot_model(series_set, request)
+        result = await render(model, request)
+
+        if output_format == "png":
+            return Image(data=result.payload, format="png")  # type: ignore[arg-type]
+        return result.payload  # type: ignore[return-value]
+
+    except ValueError as exc:
+        return f"Configuration error: {exc}"
+    except aiohttp.ClientResponseError as exc:
+        if exc.status == 401:
+            return "Authentication failed. Check the API key."
+        return f"Cloud API error (HTTP {exc.status}): {exc.message}"
+    except aiohttp.ClientError as exc:
+        return f"Network error: {type(exc).__name__}: {exc}"
+    except TimeoutError:
+        return "Request timed out. Check your internet connection."
+    except Exception as exc:  # pylint: disable=broad-except
+        return f"Chart rendering failed: {exc}"
