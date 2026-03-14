@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1] - 2026-03-14
+
+### Fixed
+
+- Applied `ruff format` to the new direct CLI files so the repository passes
+  the GitHub Actions formatting checks again. No functional changes.
+
 ## [1.3.0] - 2026-03-14
 
 ### Added

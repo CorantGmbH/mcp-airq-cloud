@@ -193,11 +193,7 @@ async def _invoke_tool(tool_name: str, arguments: dict[str, Any]) -> Any:
 async def _run_command(args: argparse.Namespace) -> Any:
     """Run the parsed CLI command."""
     tool_name = args.tool_name
-    params = {
-        name: getattr(args, name)
-        for name in inspect.signature(TOOLS[tool_name]).parameters
-        if name != "ctx"
-    }
+    params = {name: getattr(args, name) for name in inspect.signature(TOOLS[tool_name]).parameters if name != "ctx"}
     return await _invoke_tool(tool_name, params)
 
 

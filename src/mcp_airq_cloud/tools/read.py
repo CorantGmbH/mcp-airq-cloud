@@ -380,9 +380,7 @@ async def plot_air_quality_history(
         cloud = mgr.resolve(device)
 
         effective_hours = last_hours if last_hours is not None else 24.0
-        time_range = _parse_time_range(
-            datetime.now(timezone.utc), effective_hours, from_datetime, to_datetime
-        )
+        time_range = _parse_time_range(datetime.now(timezone.utc), effective_hours, from_datetime, to_datetime)
         if isinstance(time_range, str):
             return time_range
         from_dt, to_dt = time_range
