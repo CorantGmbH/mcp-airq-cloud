@@ -1,16 +1,21 @@
 """Tests for read-only tools."""
 
+import base64
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mcp.server.fastmcp.utilities.types import Image
+from mcp.types import EmbeddedResource
 
 from mcp_airq_cloud.config import DeviceConfig
 from mcp_airq_cloud.devices import DeviceManager
 from mcp_airq_cloud.tools.read import (
+    export_air_quality_history,
     get_air_quality,
     get_air_quality_history,
     list_devices,
+    plot_air_quality_history,
 )
 
 DEVICE_ID = "a" * 32
@@ -347,3 +352,94 @@ async def test_get_air_quality_history_sensors_and_max_points_combined(mock_ctx,
         assert "pm10" in cols
         assert "timestamp" in cols
         assert "temperature" not in cols
+
+
+async def test_get_air_quality_history_adds_timezone_and_history_guide(mock_ctx, mock_cloud_device):
+    """Historical output includes localized timestamps and metadata guidance."""
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await get_air_quality_history(
+            mock_ctx,
+            from_datetime="2026-03-10T14:00:00",
+            to_datetime="2026-03-10T15:00:00",
+            timezone_name="Europe/Berlin",
+        )
+        data = json.loads(result)
+        assert data["timezone"] == "Europe/Berlin"
+        assert data["columns"]["datetime"][0].endswith("+01:00")
+        assert "_history_guide" in data
+
+
+async def test_get_air_quality_history_splits_compound_values(mock_ctx, mock_cloud_device):
+    """Compound sensor values are split into value and quality columns."""
+    mock_cloud_device.get_data_timerange.return_value = [
+        {"co2": [400.5, 97.0], "timestamp": 1000},
+        {"co2": [420.0, 95.0], "timestamp": 2000},
+    ]
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await get_air_quality_history(mock_ctx, sensors=["co2"])
+        data = json.loads(result)
+        cols = data["columns"]
+        assert cols["co2"] == [400.5, 420.0]
+        assert cols["co2_quality"] == [97.0, 95.0]
+
+
+async def test_export_air_quality_history_returns_csv_resource(mock_ctx, mock_cloud_device):
+    """CSV export is returned as an embedded resource."""
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await export_air_quality_history(mock_ctx, sensor="co2", output_format="csv")
+        assert isinstance(result, EmbeddedResource)
+        assert result.resource.mimeType == "text/csv; charset=utf-8"
+        lines = result.resource.text.strip().splitlines()
+        assert lines[0].startswith("timestamp,")
+        assert lines[1].endswith(",400.0")
+
+
+async def test_export_air_quality_history_returns_xlsx_resource(mock_ctx, mock_cloud_device):
+    """Excel export is returned as an embedded binary resource."""
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await export_air_quality_history(mock_ctx, sensor="co2", output_format="xlsx")
+        assert isinstance(result, EmbeddedResource)
+        assert result.resource.mimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        payload = base64.b64decode(result.resource.blob)
+        assert payload[:2] == b"PK"
+
+
+async def test_plot_air_quality_history_supports_svg_resource(mock_ctx, mock_cloud_device):
+    """SVG plot output is returned as an embedded resource."""
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await plot_air_quality_history(mock_ctx, sensor="co2", output_format="svg")
+        assert isinstance(result, EmbeddedResource)
+        assert result.resource.mimeType == "image/svg+xml"
+        payload = base64.b64decode(result.resource.blob)
+        assert payload.lstrip().startswith(b"<?xml")
+
+
+async def test_plot_air_quality_history_supports_webp_image(mock_ctx, mock_cloud_device):
+    """WebP plot output is returned as an inline image."""
+    with patch.object(
+        mock_ctx.request_context.lifespan_context,
+        "resolve",
+        return_value=mock_cloud_device,
+    ):
+        result = await plot_air_quality_history(mock_ctx, sensor="co2", output_format="webp")
+        assert isinstance(result, Image)

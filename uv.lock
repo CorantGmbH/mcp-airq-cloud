@@ -141,16 +141,16 @@ wheels = [
 
 [[package]]
 name = "airq-mcp-timeseries"
-version = "0.1.3"
+version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
     { name = "openpyxl" },
     { name = "plotly" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/08/e0/b3a6524f11c0f7695f51413a6732c10229a93ba9d6f35f8fbbe3b89c27d8/airq_mcp_timeseries-0.1.3.tar.gz", hash = "sha256:353ea349013de34f55407c994adbdc23fa4f8d1afa5858d11f06207aa3c34ced", size = 96760, upload-time = "2026-03-14T15:21:10.34Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/81/6e769fc28f3097f42dd16de0db6b760f93020a78de7bd55228db26250bbe/airq_mcp_timeseries-0.1.4.tar.gz", hash = "sha256:34c46be2c2e42a0149b1f561af98508619c7c51751f1d26495b3bceffec68429", size = 96721, upload-time = "2026-03-16T13:50:17.992Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/2a/93e2d9a1b2031eee824453de9d39ef8c843bbf294c9c05fffa750d7bf186/airq_mcp_timeseries-0.1.3-py3-none-any.whl", hash = "sha256:8a52e488247298777196ed12a6633766d13683f104e02456b3a656dd6a0e476c", size = 29907, upload-time = "2026-03-14T15:21:08.832Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/a0/0574caae2e2bfdba101e6e0b0fa6c11901c2a62cd49c55064c250dd391f1/airq_mcp_timeseries-0.1.4-py3-none-any.whl", hash = "sha256:f4e822c836e7a27d84904fa8fed48f3c4e925be1608ca6957ea9a8a78a046019", size = 29894, upload-time = "2026-03-16T13:50:16.691Z" },
 ]
 
 [[package]]
@@ -1034,7 +1034,7 @@ wheels = [
 
 [[package]]
 name = "mcp-airq-cloud"
-version = "1.3.1"
+version = "1.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1058,7 +1058,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "aioresponses", marker = "extra == 'dev'", specifier = ">=0.7" },
-    { name = "airq-mcp-timeseries", specifier = ">=0.1.3" },
+    { name = "airq-mcp-timeseries", specifier = ">=0.1.4" },
     { name = "mcp", specifier = ">=1.26.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1" },

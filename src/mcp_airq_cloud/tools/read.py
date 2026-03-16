@@ -1,13 +1,17 @@
 """Read-only tools for querying air-Q Cloud data."""
 
+import base64
 import json
+import re
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
 from airq_mcp_timeseries.models import (
     PlotRequest,
+    PlotResult,
     PlotStyle,
     Selector,
     SeriesPoint,
@@ -15,10 +19,11 @@ from airq_mcp_timeseries.models import (
     TimeSeries,
 )
 from airq_mcp_timeseries.renderers import render
+from airq_mcp_timeseries.services.export import export_series_set
 from airq_mcp_timeseries.services.plot_model import build_plot_model
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.utilities.types import Image
-from mcp.types import ToolAnnotations
+from mcp.types import BlobResourceContents, EmbeddedResource, TextResourceContents, ToolAnnotations
 
 from mcp_airq_cloud.cloud_device import CloudDevice
 from mcp_airq_cloud.devices import DeviceManager
@@ -27,11 +32,259 @@ from mcp_airq_cloud.guides import build_sensor_guide
 from mcp_airq_cloud.server import mcp
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
+_META_KEYS = {"datetime", "timestamp", "deviceid"}
 
 
 def _manager(ctx: Context) -> DeviceManager:
     """Extract DeviceManager from request context."""
     return ctx.request_context.lifespan_context
+
+
+def _effective_timezone(timezone_name: str | None) -> tuple[timezone | ZoneInfo, str]:
+    """Resolve a user-provided timezone name or default to UTC."""
+    if timezone_name in (None, "", "UTC"):
+        return timezone.utc, "UTC"
+    try:
+        return ZoneInfo(timezone_name), timezone_name
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"Unknown timezone: {timezone_name}") from exc
+
+
+def _parse_time_range(
+    now: datetime,
+    last_hours: float | None,
+    from_datetime: str | None,
+    to_datetime: str | None,
+    timezone_name: str | None = None,
+) -> tuple[datetime, datetime, str] | str:
+    """Parse time range parameters. Returns UTC datetimes plus effective timezone name."""
+    zone, zone_name = _effective_timezone(timezone_name)
+
+    if from_datetime is not None:
+        from_dt = datetime.fromisoformat(from_datetime)
+        if from_dt.tzinfo is None:
+            from_dt = from_dt.replace(tzinfo=zone)
+        else:
+            from_dt = from_dt.astimezone(zone)
+        to_dt = now.astimezone(zone)
+        if to_datetime is not None:
+            to_dt = datetime.fromisoformat(to_datetime)
+            if to_dt.tzinfo is None:
+                to_dt = to_dt.replace(tzinfo=zone)
+            else:
+                to_dt = to_dt.astimezone(zone)
+    else:
+        hours = last_hours if last_hours is not None else 1.0
+        if hours <= 0:
+            return "last_hours must be positive."
+        to_dt = now.astimezone(zone)
+        from_dt = to_dt - timedelta(hours=hours)
+    if from_dt >= to_dt:
+        return "from_datetime must be before to_datetime."
+    return from_dt.astimezone(timezone.utc), to_dt.astimezone(timezone.utc), zone_name
+
+
+def _filter_sensors(data: list[dict], sensors: list[str]) -> list[dict]:
+    """Keep only the requested sensor keys (plus metadata) in each entry."""
+    keep = {s.lower() for s in sensors} | _META_KEYS
+    return [{k: v for k, v in entry.items() if k.lower() in keep} for entry in data]
+
+
+def _check_sensors_present(
+    data: list[dict],
+    sensors: list[str],
+) -> str | None:
+    """Return an error string if any requested sensors are missing from the data."""
+    if not data or not sensors:
+        return None
+    present = set().union(*(e.keys() for e in data)) - _META_KEYS
+    missing = {s.lower() for s in sensors} - {k.lower() for k in present}
+    if missing:
+        available = sorted(k for k in present if k.lower() not in _META_KEYS)
+        msg = f"Sensor(s) not available on this device: {', '.join(sorted(missing))}."
+        if available:
+            msg += f" Available: {', '.join(available)}."
+        return msg
+    return None
+
+
+def _downsample(data: list[dict], max_points: int) -> list[dict]:
+    """Evenly downsample a list to at most max_points entries."""
+    n = len(data)
+    if n <= max_points:
+        return data
+    step = n / max_points
+    return [data[int(i * step)] for i in range(max_points)]
+
+
+def _history_sensor_keys(data: list[dict]) -> set[str]:
+    """Return the sensor keys present in historical rows, excluding metadata."""
+    keys: set[str] = set()
+    for row in data:
+        keys.update(k for k in row if k not in _META_KEYS)
+    return keys
+
+
+def _quality_column_names(raw_value: object, key: str) -> list[str]:
+    """Determine derived column names for compound sensor values."""
+    if not isinstance(raw_value, (list, tuple)):
+        return []
+    if len(raw_value) <= 1:
+        return []
+    if len(raw_value) == 2:
+        return [f"{key}_quality"]
+    return [f"{key}_{index}" for index in range(1, len(raw_value))]
+
+
+def _to_columnar(data: list[dict], timezone_name: str) -> dict[str, list]:
+    """Convert row-oriented data to column-oriented format with localized datetimes."""
+    if not data:
+        return {}
+
+    zone, _ = _effective_timezone(timezone_name)
+    sensor_keys = sorted(_history_sensor_keys(data))
+    derived_keys: list[str] = []
+    for key in sensor_keys:
+        seen: set[str] = set()
+        for row in data:
+            for derived in _quality_column_names(row.get(key), key):
+                if derived not in seen:
+                    derived_keys.append(derived)
+                    seen.add(derived)
+
+    columns: dict[str, list] = {"timestamp": [], "datetime": []}
+    for key in sensor_keys:
+        columns[key] = []
+    for key in derived_keys:
+        columns[key] = []
+
+    for row in data:
+        ts_ms = int(row.get("timestamp", 0) or 0)
+        columns["timestamp"].append(ts_ms // 1000)
+        columns["datetime"].append(datetime.fromtimestamp(ts_ms / 1000, tz=zone).isoformat())
+
+        for key in sensor_keys:
+            raw_value = row.get(key)
+            if isinstance(raw_value, (list, tuple)):
+                primary = raw_value[0] if len(raw_value) >= 1 else None
+                columns[key].append(primary)
+                extras = _quality_column_names(raw_value, key)
+                for index, derived in enumerate(extras, start=1):
+                    columns[derived].append(raw_value[index] if len(raw_value) > index else None)
+            else:
+                columns[key].append(raw_value)
+                for derived in [name for name in derived_keys if name == f"{key}_quality" or name.startswith(f"{key}_")]:
+                    columns[derived].append(None)
+
+    return columns
+
+
+def _history_guide(timezone_name: str, data: list[dict]) -> str:
+    """Describe non-sensor history output columns added by this MCP server."""
+    has_compound = any(
+        isinstance(value, (list, tuple)) and len(value) > 1
+        for row in data
+        for key, value in row.items()
+        if key not in _META_KEYS
+    )
+
+    lines = [
+        "# History Output Guide",
+        "",
+        "| Key | Unit | Notes |",
+        "|---|---|---|",
+        "| timestamp | s | Unix epoch in seconds. |",
+        f"| datetime | ISO 8601 | Timestamp rendered in timezone `{timezone_name}`. |",
+    ]
+    if has_compound:
+        lines.append(
+            "| `<sensor>_quality` | % | Quality/confidence value when the cloud history returns `[value, quality]`. |"
+        )
+    return "\n".join(lines)
+
+
+def _series_value(row: dict, sensor: str) -> float | None:
+    """Extract a numeric value for one sensor from a raw history row."""
+    val_raw = row.get(sensor)
+    if val_raw is None:
+        return None
+    if isinstance(val_raw, (list, tuple)):
+        val_raw = val_raw[0] if val_raw else None
+    try:
+        return float(val_raw) if val_raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _rows_to_series_set(
+    device_label: str,
+    sensor: str,
+    data: list[dict],
+    from_dt: datetime,
+    to_dt: datetime,
+    timezone_name: str,
+) -> SeriesSet:
+    """Convert raw cloud rows to a SeriesSet for chart rendering and export."""
+    key = sensor.lower()
+    zone, _ = _effective_timezone(timezone_name)
+    points = []
+    for row in data:
+        ts_ms = int(row.get("timestamp", 0) or 0)
+        ts_iso = datetime.fromtimestamp(ts_ms / 1000, tz=zone).isoformat()
+        points.append(SeriesPoint(ts=ts_iso, value=_series_value(row, key)))
+    ts = TimeSeries(id=device_label, label=device_label, unit=None, points=points)
+    return SeriesSet(
+        metric=key,
+        series=[ts],
+        start=from_dt.astimezone(zone).isoformat(),
+        end=to_dt.astimezone(zone).isoformat(),
+    )
+
+
+def _slugify(value: str) -> str:
+    """Build a stable ASCII-only file stem for exported artifacts."""
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "airq"
+
+
+def _artifact_name(prefix: str, device_label: str, sensor: str, output_format: str) -> str:
+    """Build a synthetic artifact filename for embedded resources."""
+    return f"{_slugify(prefix)}-{_slugify(device_label)}-{_slugify(sensor)}.{output_format}"
+
+
+def _resource_from_payload(filename: str, payload: bytes | str, mime_type: str) -> EmbeddedResource:
+    """Wrap exported bytes/text as an embedded MCP resource."""
+    uri = f"airq-cloud://artifacts/{filename}"
+    if isinstance(payload, str):
+        resource = TextResourceContents(uri=uri, mimeType=mime_type, text=payload)
+    else:
+        resource = BlobResourceContents(uri=uri, mimeType=mime_type, blob=base64.b64encode(payload).decode())
+    return EmbeddedResource(type="resource", resource=resource)
+
+
+def _plot_output(
+    result: PlotResult,
+    device_label: str,
+    sensor: str,
+    output_format: str,
+) -> Image | EmbeddedResource:
+    """Convert a renderer payload into the most suitable MCP return type."""
+    if output_format in {"png", "webp"}:
+        assert isinstance(result.payload, bytes)
+        return Image(data=result.payload, format=output_format)
+    if output_format == "html":
+        assert isinstance(result.payload, str)
+        return _resource_from_payload(
+            _artifact_name("plot", device_label, sensor, output_format),
+            result.payload,
+            result.mime_type,
+        )
+    assert isinstance(result.payload, bytes)
+    return _resource_from_payload(
+        _artifact_name("plot", device_label, sensor, output_format),
+        result.payload,
+        result.mime_type,
+    )
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -99,86 +352,6 @@ async def get_air_quality(
     return json.dumps(data, indent=2, default=str)
 
 
-def _parse_time_range(
-    now: datetime,
-    last_hours: float | None,
-    from_datetime: str | None,
-    to_datetime: str | None,
-) -> tuple[datetime, datetime] | str:
-    """Parse time range parameters. Returns (from_dt, to_dt) or an error string."""
-    if from_datetime is not None:
-        from_dt = datetime.fromisoformat(from_datetime)
-        if from_dt.tzinfo is None:
-            from_dt = from_dt.replace(tzinfo=timezone.utc)
-        to_dt = now
-        if to_datetime is not None:
-            to_dt = datetime.fromisoformat(to_datetime)
-            if to_dt.tzinfo is None:
-                to_dt = to_dt.replace(tzinfo=timezone.utc)
-    else:
-        hours = last_hours if last_hours is not None else 1.0
-        if hours <= 0:
-            return "last_hours must be positive."
-        from_dt = now - timedelta(hours=hours)
-        to_dt = now
-    if from_dt >= to_dt:
-        return "from_datetime must be before to_datetime."
-    return from_dt, to_dt
-
-
-def _filter_sensors(data: list[dict], sensors: list[str]) -> list[dict]:
-    """Keep only the requested sensor keys (plus datetime/timestamp) in each entry."""
-    keep = {s.lower() for s in sensors} | {"datetime", "timestamp", "deviceid"}
-    return [{k: v for k, v in entry.items() if k.lower() in keep} for entry in data]
-
-
-def _check_sensors_present(
-    data: list[dict],
-    sensors: list[str],
-) -> str | None:
-    """Return an error string if any requested sensors are missing from the data."""
-    if not data or not sensors:
-        return None
-    meta = {"datetime", "timestamp", "deviceid"}
-    present = set().union(*(e.keys() for e in data)) - meta
-    missing = {s.lower() for s in sensors} - {k.lower() for k in present}
-    if missing:
-        available = sorted(k for k in present if k.lower() not in meta)
-        msg = f"Sensor(s) not available on this device: {', '.join(sorted(missing))}."
-        if available:
-            msg += f" Available: {', '.join(available)}."
-        return msg
-    return None
-
-
-def _downsample(data: list[dict], max_points: int) -> list[dict]:
-    """Evenly downsample a list to at most max_points entries."""
-    n = len(data)
-    if n <= max_points:
-        return data
-    step = n / max_points
-    return [data[int(i * step)] for i in range(max_points)]
-
-
-def _to_columnar(data: list[dict]) -> dict[str, list]:
-    """Convert row-oriented data to column-oriented format.
-
-    Drops ``deviceid`` and ``datetime`` (redundant with ``timestamp``).
-    Timestamps are returned in seconds (divided by 1000).
-    """
-    if not data:
-        return {}
-    skip = {"deviceid", "datetime"}
-    keys = [k for k in data[0] if k not in skip]
-    cols: dict[str, list] = {}
-    for k in keys:
-        if k == "timestamp":
-            cols[k] = [row.get(k, 0) // 1000 for row in data]
-        else:
-            cols[k] = [row.get(k) for row in data]
-    return cols
-
-
 @mcp.tool(annotations=READ_ONLY)
 @handle_cloud_errors
 async def get_air_quality_history(
@@ -189,6 +362,7 @@ async def get_air_quality_history(
     to_datetime: str | None = None,
     sensors: list[str] | None = None,
     max_points: int | None = None,
+    timezone_name: str | None = None,
 ) -> str:
     """Get historical air quality data from the air-Q Cloud within a time range.
 
@@ -208,39 +382,33 @@ async def get_air_quality_history(
       (e.g. "2026-03-10T14:00:00" or "2026-03-10T14:00:00+01:00")
       'from_datetime' takes precedence over 'last_hours'.
       'to_datetime' defaults to now.
+    - 'timezone_name' — optional IANA timezone such as "Europe/Berlin".
+      Naive datetimes are interpreted in this timezone. Output timestamps are
+      localized into `datetime` using the same timezone.
 
     Optional filtering:
     - 'sensors' — list of sensor names to include (e.g. ["pm1", "pm2_5", "pm10"]).
       Omit to get all sensors.
-      Valid sensor names (device-dependent):
-        Climate:    temperature, humidity, humidity_abs, dewpt,
-                    pressure, pressure_rel
-        Gases:      co2, tvoc, tvoc_ionsc, co, no2, so2, o3, h2s, oxygen,
-                    n2o, nh3_mr100, no_m250, hcl, hcn, hf, ph3, sih4,
-                    br2, cl2_m20, clo2, cs2, f2, c2h4, c2h4o, ch2o_m10,
-                    ch4s, ethanol, acid_m100, h2_m1000, h2o2, ash3,
-                    ch4_mipex, c3h8_mipex, r32, r454b, r454c
-        Particles:  pm1, pm2_5, pm10, typps,
-                    cnt0_3, cnt0_5, cnt1, cnt2_5, cnt5, cnt10,
-                    pm1_sps30, pm2_5_sps30, pm4_sps30, pm10_sps30,
-                    cnt0_5_sps30, cnt1_sps30, cnt2_5_sps30, cnt4_sps30,
-                    cnt10_sps30, typps_sps30
-        Acoustics:  sound, sound_max
-        Radon:      radon
-        Indices:    health, performance, mold, virus
-        Other:      flow1, flow2, flow3, flow4, wifi
     - 'max_points' — downsample to at most this many evenly spaced points.
 
-    Response: column-oriented JSON. Timestamps are Unix seconds (integer).
-    Includes _sensor_guide with unit and interpretation documentation.
+    Response: column-oriented JSON with `timestamp` (Unix seconds) and localized
+    `datetime` columns. Compound sensor values like `[value, quality]` are split
+    into `<sensor>` and `<sensor>_quality`. Includes `_sensor_guide` and
+    `_history_guide`.
     """
     mgr = _manager(ctx)
     cloud = mgr.resolve(device)
 
-    time_range = _parse_time_range(datetime.now(timezone.utc), last_hours, from_datetime, to_datetime)
+    time_range = _parse_time_range(
+        datetime.now(timezone.utc),
+        last_hours,
+        from_datetime,
+        to_datetime,
+        timezone_name=timezone_name,
+    )
     if isinstance(time_range, str):
         return time_range
-    from_dt, to_dt = time_range
+    from_dt, to_dt, effective_timezone = time_range
 
     from_ms = int(from_dt.timestamp() * 1000)
     to_ms = int(to_dt.timestamp() * 1000)
@@ -256,49 +424,75 @@ async def get_air_quality_history(
     if max_points is not None and max_points > 0:
         data = _downsample(data, max_points)
 
-    all_keys = set().union(*(entry.keys() for entry in data)) if data else set()
+    sensor_keys = _history_sensor_keys(data)
+    zone, _ = _effective_timezone(effective_timezone)
     result: dict[str, object] = {
-        "from": from_dt.isoformat(),
-        "to": to_dt.isoformat(),
+        "from": from_dt.astimezone(zone).isoformat(),
+        "to": to_dt.astimezone(zone).isoformat(),
+        "timezone": effective_timezone,
         "count": len(data),
-        "columns": _to_columnar(data),
+        "columns": _to_columnar(data, effective_timezone),
+        "_history_guide": _history_guide(effective_timezone, data),
     }
-    guide = build_sensor_guide(all_keys)
+    guide = build_sensor_guide(sensor_keys)
     if guide:
         result["_sensor_guide"] = guide
     return json.dumps(result, separators=(",", ":"), default=str)
 
 
-def _rows_to_series_set(
-    device_label: str,
+@mcp.tool(annotations=READ_ONLY, structured_output=False)
+@handle_cloud_errors
+async def export_air_quality_history(
+    ctx: Context,
     sensor: str,
-    data: list[dict],
-    from_dt: datetime,
-    to_dt: datetime,
-) -> SeriesSet:
-    """Convert raw cloud rows to a SeriesSet for chart rendering."""
+    device: str | None = None,
+    last_hours: float | None = None,
+    from_datetime: str | None = None,
+    to_datetime: str | None = None,
+    output_format: Literal["csv", "xlsx"] = "csv",
+    max_points: int = 300,
+    timezone_name: str | None = None,
+) -> EmbeddedResource | str:
+    """Export historical air-Q Cloud sensor data as CSV or Excel."""
+    mgr = _manager(ctx)
+    names = mgr.device_names
+    if device is None and len(names) == 1:
+        device_label = names[0]
+    elif device is not None:
+        device_label = device
+    else:
+        return f"Multiple devices configured. Specify one of: {', '.join(names)}"
+
+    cloud = mgr.resolve(device)
+    time_range = _parse_time_range(
+        datetime.now(timezone.utc),
+        last_hours,
+        from_datetime,
+        to_datetime,
+        timezone_name=timezone_name,
+    )
+    if isinstance(time_range, str):
+        return time_range
+    from_dt, to_dt, effective_timezone = time_range
+
+    from_ms = int(from_dt.timestamp() * 1000)
+    to_ms = int(to_dt.timestamp() * 1000)
+    data = await cloud.get_data_timerange(from_ms, to_ms)
+
     key = sensor.lower()
-    points = []
-    for row in data:
-        ts_ms = row.get("timestamp", 0)
-        ts_iso = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
-        val_raw = row.get(key)
-        if val_raw is None:
-            val: float | None = None
-        elif isinstance(val_raw, list):
-            val = float(val_raw[0]) if val_raw else None
-        else:
-            try:
-                val = float(val_raw)
-            except (TypeError, ValueError):
-                val = None
-        points.append(SeriesPoint(ts=ts_iso, value=val))
-    ts = TimeSeries(id=device_label, label=device_label, unit=None, points=points)
-    return SeriesSet(
-        metric=key,
-        series=[ts],
-        start=from_dt.isoformat(),
-        end=to_dt.isoformat(),
+    error = _check_sensors_present(data, [key])
+    if error:
+        return error
+
+    if max_points > 0:
+        data = _downsample(data, max_points)
+
+    series_set = _rows_to_series_set(device_label, key, data, from_dt, to_dt, effective_timezone)
+    export = export_series_set(series_set, output_format=output_format)
+    return _resource_from_payload(
+        _artifact_name("history", device_label, key, output_format),
+        export.payload,
+        export.mime_type,
     )
 
 
@@ -315,56 +509,17 @@ async def plot_air_quality_history(
     y_axis_title: str | None = None,
     chart_type: Literal["line", "area"] = "area",
     dark: bool = False,
-    output_format: Literal["png", "html"] = "png",
+    output_format: Literal["png", "html", "svg", "webp"] = "png",
     max_points: int = 300,
-) -> Image | str:
+    timezone_name: str | None = None,
+) -> Image | EmbeddedResource | str:
     """Generate a chart of historical air-Q Cloud sensor data.
 
-    WHEN TO USE THIS TOOL: Call this whenever the user asks to see a graph,
-    chart, plot, or visual representation of historical sensor data.
-
     OUTPUT FORMAT:
-    - "png" (default) — returns an inline image; very token-efficient because
-      the raw data never appears in the conversation. Use this in almost all cases.
-    - "html" — returns a self-contained interactive HTML page (with dark/light
-      toggle). Use only when the user explicitly wants an interactive chart or
-      a downloadable file for claude.ai Canvas/Artifacts.
-
-    REQUIRED
-    - sensor: the sensor key to visualise (one sensor per chart).
-      Examples: "co2", "temperature", "humidity", "pm2_5", "tvoc",
-                "pressure", "sound", "radon", "health", "virus"
-      Only one sensor can be shown per chart. Call the tool multiple times
-      to produce charts for several sensors.
-
-    AXIS LABELS — always set these in the user's current language.
-    The LLM is responsible for choosing correct labels and units because
-    sensor labels and user languages are known only at call time.
-    - title: headline shown above the chart
-        German:  "CO₂-Verlauf Wohnzimmer (letzte 24 h)"
-        English: "CO₂ Trend Living Room (last 24 h)"
-        French:  "Évolution CO₂ Salon (24 dernières h)"
-    - y_axis_title: value-axis label including the unit
-        "CO₂ (ppm)"  |  "Temperatur (°C)"  |  "PM2.5 (µg/m³)"
-        "Humidity (%)"  |  "Sound (dB(A))"  |  "Radon (Bq/m³)"
-    - x_axis_title: time-axis label (optional, leave None to omit)
-        "Zeit"  |  "Time"  |  "Temps"
-
-    TIME RANGE — specify exactly one of:
-    - last_hours: data from the last N hours (default: 24)
-    - from_datetime / to_datetime: ISO 8601 strings
-      (e.g. "2026-03-10T14:00:00" or "2026-03-10T14:00:00+01:00")
-      'from_datetime' takes precedence over 'last_hours'.
-      'to_datetime' defaults to now.
-
-    DEVICE — optional when only one device is configured.
-    Use list_devices to obtain valid names.
-
-    STYLE OPTIONS:
-    - chart_type: "area" (default, filled under the curve) or "line"
-    - dark: True for dark background (default: False / light)
-    - max_points: maximum data points to render (default: 300). For time
-      ranges longer than 4 hours keep this at 300 or lower.
+    - "png" (default) — inline image for previews
+    - "webp" — inline image with smaller payload size
+    - "svg" — vector graphic as downloadable MCP resource
+    - "html" — self-contained interactive HTML as downloadable MCP resource
     """
     try:
         mgr = _manager(ctx)
@@ -380,10 +535,16 @@ async def plot_air_quality_history(
         cloud = mgr.resolve(device)
 
         effective_hours = last_hours if last_hours is not None else 24.0
-        time_range = _parse_time_range(datetime.now(timezone.utc), effective_hours, from_datetime, to_datetime)
+        time_range = _parse_time_range(
+            datetime.now(timezone.utc),
+            effective_hours,
+            from_datetime,
+            to_datetime,
+            timezone_name=timezone_name,
+        )
         if isinstance(time_range, str):
             return time_range
-        from_dt, to_dt = time_range
+        from_dt, to_dt, effective_timezone = time_range
 
         from_ms = int(from_dt.timestamp() * 1000)
         to_ms = int(to_dt.timestamp() * 1000)
@@ -397,7 +558,7 @@ async def plot_air_quality_history(
         if max_points > 0:
             data = _downsample(data, max_points)
 
-        series_set = _rows_to_series_set(device_label, key, data, from_dt, to_dt)
+        series_set = _rows_to_series_set(device_label, key, data, from_dt, to_dt, effective_timezone)
 
         request = PlotRequest(
             selector=Selector(devices=[device_label]),
@@ -405,6 +566,7 @@ async def plot_air_quality_history(
             start=from_dt,
             end=to_dt,
             chart_type=chart_type,
+            timezone=effective_timezone,
             output_format=output_format,
             style=PlotStyle(
                 title=title,
@@ -416,10 +578,7 @@ async def plot_air_quality_history(
 
         model = build_plot_model(series_set, request)
         result = await render(model, request)
-
-        if output_format == "png":
-            return Image(data=result.payload, format="png")  # type: ignore[arg-type]
-        return result.payload  # type: ignore[return-value]
+        return _plot_output(result, device_label, key, output_format)
 
     except ValueError as exc:
         return f"Configuration error: {exc}"

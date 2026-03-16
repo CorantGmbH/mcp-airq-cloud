@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.4.0] - 2026-03-16
+
+### Added
+
+- Added `export_air_quality_history` for first-class `csv` and `xlsx` exports
+  of one historical sensor as downloadable MCP resources.
+
+### Changed
+
+- `plot_air_quality_history` now exposes all plot formats supported by
+  `airq-mcp-timeseries`: `png`, `webp`, `svg`, and `html`.
+- `get_air_quality_history` and `plot_air_quality_history` now accept
+  `timezone_name` to interpret naive input timestamps and localize rendered
+  output.
+- Historical JSON now includes a localized `datetime` column, a `timezone`
+  field, and an `_history_guide` that documents metadata columns separately
+  from the sensor guide.
+- Compound historical values such as `[value, quality]` are now normalized into
+  separate columns like `co2` and `co2_quality`.
+
 ## [1.3.1] - 2026-03-14
 
 ### Fixed

@@ -23,7 +23,9 @@ tool name as a subcommand.
 |------|-------------|
 | `list_devices` | List configured air-Q Cloud devices |
 | `get_air_quality` | Get latest sensor readings (supports device/location/group selection) |
-| `get_air_quality_history` | Get historical data within a time range |
+| `get_air_quality_history` | Get historical data within a time range as column-oriented JSON |
+| `plot_air_quality_history` | Render historical charts as `png`, `webp`, `svg`, or `html` |
+| `export_air_quality_history` | Export one historical sensor as `csv` or `xlsx` |
 
 All tools are **read-only** — the Cloud API does not support device configuration or control.
 
@@ -49,7 +51,8 @@ Use the same command directly from the shell:
 mcp-airq-cloud list-devices
 mcp-airq-cloud get-air-quality --device "Living Room"
 mcp-airq-cloud get-air-quality-history --device "Living Room" --last-hours 24 --sensors co2 pm2_5
-mcp-airq-cloud plot-air-quality-history --sensor co2 --device "Living Room" --output co2.png
+mcp-airq-cloud plot-air-quality-history --sensor co2 --device "Living Room" --output-format svg --output co2.svg
+mcp-airq-cloud export-air-quality-history --sensor co2 --device "Living Room" --output-format xlsx --output co2.xlsx
 ```
 
 The CLI subcommands mirror the MCP tool names. Both styles work:
@@ -74,6 +77,7 @@ mcp-airq-cloud get-air-quality --device "Living Room" | jq '.co2'
 mcp-airq-cloud get-air-quality-history --device "Living Room" --compact-json | jq '.columns.co2'
 mcp-airq-cloud get-air-quality-history --device "Living Room" --yaml | yq '.columns.co2'
 mcp-airq-cloud plot-air-quality-history --sensor co2 --device "Living Room" --output - > co2.png
+mcp-airq-cloud export-air-quality-history --sensor co2 --device "Living Room" --output - > co2.xlsx
 ```
 
 ## Configuration
