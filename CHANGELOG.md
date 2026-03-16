@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.4] - 2026-03-16
+
+### Changed
+
+- The direct CLI now unwraps embedded resource payloads instead of printing
+  Python object reprs, so exports and non-image plots work as real shell
+  outputs.
+- Added `--output` support for historical exports and plots in direct CLI mode.
+
 ## [1.4.3] - 2026-03-16
 
 ### Fixed

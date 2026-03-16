@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import inspect
 import json
 import re
@@ -15,6 +16,7 @@ from typing import Any, Literal, get_args, get_origin
 
 import aiohttp
 from mcp.server.fastmcp.utilities.types import Image
+from mcp.types import BlobResourceContents, EmbeddedResource, TextResourceContents
 
 from mcp_airq_cloud.config import load_config
 from mcp_airq_cloud.devices import DeviceManager
@@ -160,10 +162,10 @@ def build_parser() -> argparse.ArgumentParser:
             if name == "ctx":
                 continue
             _add_argument(subparser, name, parameter)
-        if tool_name == "plot_air_quality_history":
+        if tool_name in {"plot_air_quality_history", "export_air_quality_history"}:
             subparser.add_argument(
                 "--output",
-                help="Write the plot to this file. Use '-' for stdout.",
+                help="Write the resource to this file. Use '-' for stdout.",
             )
 
     return parser
@@ -233,6 +235,8 @@ def _is_error_result(result: Any) -> bool:
 
 def _coerce_structured_data(result: Any) -> Any:
     """Parse JSON strings so they can be re-serialized for CLI output."""
+    if hasattr(result, "model_dump"):
+        return result.model_dump(mode="json")
     if isinstance(result, str):
         try:
             return json.loads(result)
@@ -312,6 +316,25 @@ def _resolve_plot_output_path(args: argparse.Namespace) -> Path:
     return _default_output_path(args)
 
 
+def _should_stream_resource_to_stdout(args: argparse.Namespace) -> bool:
+    """Decide whether a binary/text resource should be streamed to stdout."""
+    return args.output == "-" or (args.output is None and not sys.stdout.isatty())
+
+
+def _default_resource_output_path(result: EmbeddedResource, args: argparse.Namespace) -> Path:
+    """Choose a default file path for an embedded resource."""
+    uri = str(result.resource.uri)
+    filename = uri.rsplit("/", 1)[-1] or _command_name(args.tool_name)
+    return Path(filename)
+
+
+def _resolve_resource_output_path(result: EmbeddedResource, args: argparse.Namespace) -> Path:
+    """Resolve the target file path for an embedded resource."""
+    if args.output and args.output != "-":
+        return Path(args.output)
+    return _default_resource_output_path(result, args)
+
+
 def _emit_formatted_text(args: argparse.Namespace, result: Any) -> None:
     """Emit one non-binary result according to the selected output mode."""
     if args.output_mode == "text" and not args.compact_json:
@@ -333,6 +356,32 @@ def _emit_formatted_text(args: argparse.Namespace, result: Any) -> None:
     print(result)
 
 
+def _emit_embedded_resource(args: argparse.Namespace, result: EmbeddedResource) -> None:
+    """Emit one embedded MCP resource as text or bytes."""
+    resource = result.resource
+
+    if isinstance(resource, TextResourceContents):
+        if args.output and args.output != "-":
+            output_path = _resolve_resource_output_path(result, args)
+            output_path.write_text(resource.text, encoding="utf-8")
+            print(output_path)
+            return
+        _write_stdout_text(resource.text)
+        return
+
+    if isinstance(resource, BlobResourceContents):
+        payload = base64.b64decode(resource.blob)
+        if _should_stream_resource_to_stdout(args):
+            _write_stdout_bytes(payload)
+            return
+        output_path = _resolve_resource_output_path(result, args)
+        output_path.write_bytes(payload)
+        print(output_path)
+        return
+
+    raise ValueError(f"Unsupported embedded resource type: {type(resource).__name__}")
+
+
 def _emit_result(args: argparse.Namespace, result: Any) -> None:
     """Emit the command result to stdout or a file."""
     if isinstance(result, Image):
@@ -348,6 +397,13 @@ def _emit_result(args: argparse.Namespace, result: Any) -> None:
         output_path = _resolve_plot_output_path(args)
         _write_image(result, output_path)
         print(output_path)
+        return
+
+    if isinstance(result, EmbeddedResource):
+        if args.output_mode != "text" or args.compact_json:
+            _emit_formatted_text(args, result)
+            return
+        _emit_embedded_resource(args, result)
         return
 
     if args.tool_name == "plot_air_quality_history":
