@@ -432,7 +432,7 @@ async def test_export_air_quality_history_combines_all_devices_into_one_csv_reso
     living_room = AsyncMock()
     living_room.get_data_timerange.return_value = [{"timestamp": 1000, "co2": 400}]
     office = AsyncMock()
-    office.get_data_timerange.return_value = [{"timestamp": 1000, "pm2_5": 12}]
+    office.get_data_timerange.return_value = None
     bedroom = AsyncMock()
     bedroom.get_data_timerange.return_value = [{"timestamp": 2000, "co2": 420}]
 
@@ -490,6 +490,7 @@ async def test_plot_air_quality_history_combines_all_devices_into_one_resource(m
     assert isinstance(result, EmbeddedResource)
     assert isinstance(result.resource, BlobResourceContents)
     assert str(result.resource.uri).endswith("plot-all-devices-co2.svg")
+    assert render_mock.await_args is not None
     model, request = render_mock.await_args.args
     assert [series.label for series in model.series] == ["Living Room", "Bedroom"]
     assert model.y_axis_title == "ppm"
