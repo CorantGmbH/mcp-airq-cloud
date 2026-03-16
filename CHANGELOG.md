@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.1] - 2026-03-16
+
+### Fixed
+
+- Applied `ruff format` to [`src/mcp_airq_cloud/tools/read.py`] so the
+  repository passes the GitHub Actions formatting check again. No functional
+  changes.
+
 ## [1.4.0] - 2026-03-16
 
 ### Added

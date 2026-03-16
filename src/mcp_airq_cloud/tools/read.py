@@ -174,7 +174,9 @@ def _to_columnar(data: list[dict], timezone_name: str) -> dict[str, list]:
                     columns[derived].append(raw_value[index] if len(raw_value) > index else None)
             else:
                 columns[key].append(raw_value)
-                for derived in [name for name in derived_keys if name == f"{key}_quality" or name.startswith(f"{key}_")]:
+                for derived in [
+                    name for name in derived_keys if name == f"{key}_quality" or name.startswith(f"{key}_")
+                ]:
                     columns[derived].append(None)
 
     return columns

@@ -45,6 +45,7 @@ def test_main_parses_list_arguments():
             "to_datetime": None,
             "sensors": ["co2", "pm2_5"],
             "max_points": 150,
+            "timezone_name": None,
         },
     )
 
@@ -83,6 +84,7 @@ def test_main_writes_plot_image(tmp_path, capsys):
             "dark": False,
             "output_format": "png",
             "max_points": 300,
+            "timezone_name": None,
         },
     )
     assert output.read_bytes() == b"png-bytes"
