@@ -5,9 +5,9 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from airq_mcp_timeseries.models import PlotResult
 from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import BlobResourceContents, EmbeddedResource, TextResourceContents
-from airq_mcp_timeseries.models import PlotResult
 
 from mcp_airq_cloud.config import DeviceConfig
 from mcp_airq_cloud.devices import DeviceManager
@@ -423,7 +423,9 @@ async def test_export_air_quality_history_returns_xlsx_resource(mock_ctx, mock_c
         assert payload[:2] == b"PK"
 
 
-async def test_export_air_quality_history_combines_all_devices_into_one_csv_resource(mock_session, multi_device_configs):
+async def test_export_air_quality_history_combines_all_devices_into_one_csv_resource(
+    mock_session, multi_device_configs
+):
     """Export combines all matching cloud devices into one CSV artifact."""
     mgr = DeviceManager(mock_session, multi_device_configs)
     ctx = MagicMock()
@@ -480,11 +482,14 @@ async def test_plot_air_quality_history_combines_all_devices_into_one_resource(m
     bedroom.get_data_timerange.return_value = [{"timestamp": 2000, "co2": 420}]
     render_result = PlotResult(output_format="svg", mime_type="image/svg+xml", payload=b"<svg/>")
 
-    with patch.object(
-        mgr,
-        "all_devices",
-        return_value=[("Living Room", living_room), ("Office", office), ("Bedroom", bedroom)],
-    ), patch("mcp_airq_cloud.tools.read.render", new=AsyncMock(return_value=render_result)) as render_mock:
+    with (
+        patch.object(
+            mgr,
+            "all_devices",
+            return_value=[("Living Room", living_room), ("Office", office), ("Bedroom", bedroom)],
+        ),
+        patch("mcp_airq_cloud.tools.read.render", new=AsyncMock(return_value=render_result)) as render_mock,
+    ):
         result = await plot_air_quality_history(ctx, sensor="co2", output_format="svg")
 
     assert isinstance(result, EmbeddedResource)

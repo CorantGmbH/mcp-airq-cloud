@@ -74,6 +74,8 @@ def test_main_writes_plot_image(tmp_path, capsys):
         {
             "sensor": "co2",
             "device": "Living Room",
+            "location": None,
+            "group": None,
             "last_hours": None,
             "from_datetime": None,
             "to_datetime": None,
