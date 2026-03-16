@@ -36,7 +36,9 @@ mcp = FastMCP(
         "This server provides access to air-Q air quality data via the air-Q Cloud API. "
         "Use list_devices to see available devices. Most tools accept an "
         "optional 'device' parameter to select which device to query — "
-        "if only one device is configured, it is selected automatically."
+        "if only one device is configured, it is selected automatically. "
+        "For historical plots, prefer PNG unless the user explicitly requests "
+        "another output format."
     ),
     lifespan=app_lifespan,
 )

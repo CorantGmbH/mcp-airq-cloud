@@ -29,7 +29,7 @@ from pydantic import AnyUrl
 from mcp_airq_cloud.cloud_device import CloudDevice
 from mcp_airq_cloud.devices import DeviceManager
 from mcp_airq_cloud.errors import handle_cloud_errors
-from mcp_airq_cloud.guides import build_sensor_guide
+from mcp_airq_cloud.guides import build_sensor_guide, sensor_unit
 from mcp_airq_cloud.server import mcp
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
@@ -206,6 +206,11 @@ def _history_guide(timezone_name: str, data: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _lower_keys(data: dict) -> dict:
+    """Lowercase all dict keys."""
+    return {k.lower(): v for k, v in data.items()}
+
+
 def _series_value(row: dict, sensor: str) -> float | None:
     """Extract a numeric value for one sensor from a raw history row."""
     val_raw = row.get(sensor)
@@ -219,15 +224,13 @@ def _series_value(row: dict, sensor: str) -> float | None:
         return None
 
 
-def _rows_to_series_set(
+def _rows_to_time_series(
     device_label: str,
     sensor: str,
     data: list[dict],
-    from_dt: datetime,
-    to_dt: datetime,
     timezone_name: str,
-) -> SeriesSet:
-    """Convert raw cloud rows to a SeriesSet for chart rendering and export."""
+) -> TimeSeries:
+    """Convert raw cloud rows to one TimeSeries."""
     key = sensor.lower()
     zone, _ = _effective_timezone(timezone_name)
     points = []
@@ -235,13 +238,111 @@ def _rows_to_series_set(
         ts_ms = int(row.get("timestamp", 0) or 0)
         ts_iso = datetime.fromtimestamp(ts_ms / 1000, tz=zone).isoformat()
         points.append(SeriesPoint(ts=ts_iso, value=_series_value(row, key)))
-    ts = TimeSeries(id=device_label, label=device_label, unit=None, points=points)
+    return TimeSeries(id=device_label, label=device_label, unit=sensor_unit(key), points=points)
+
+
+def _build_series_set(
+    sensor: str,
+    series: list[TimeSeries],
+    from_dt: datetime,
+    to_dt: datetime,
+    timezone_name: str,
+) -> SeriesSet:
+    """Build a SeriesSet spanning one or more cloud devices for the same metric."""
+    zone, _ = _effective_timezone(timezone_name)
     return SeriesSet(
-        metric=key,
-        series=[ts],
+        metric=sensor.lower(),
+        series=series,
         start=from_dt.astimezone(zone).isoformat(),
         end=to_dt.astimezone(zone).isoformat(),
     )
+
+
+def _resolved_device_label(device_names: Sequence[str], device: str | None) -> str:
+    """Resolve a requested device name to the concrete configured label."""
+    if device is None:
+        if len(device_names) == 1:
+            return device_names[0]
+        raise ValueError(f"Multiple devices configured. Specify one of: {', '.join(device_names)}")
+    if device in device_names:
+        return device
+    needle = device.lower()
+    matches = [name for name in device_names if needle in name.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise ValueError(f"No device matching '{device}'. Available: {', '.join(device_names)}")
+    raise ValueError(f"Ambiguous device '{device}'. Matches: {', '.join(matches)}")
+
+
+def _resolve_history_targets(
+    mgr: DeviceManager,
+    device: str | None,
+    location: str | None,
+    group: str | None,
+) -> tuple[str, Sequence[tuple[str, CloudDevice]], Selector] | str:
+    """Resolve one historical query target set from device/location/group/all."""
+    selectors = [x for x in (device, location, group) if x is not None]
+    if len(selectors) > 1:
+        return "Specify at most one of 'device', 'location', or 'group'."
+
+    if location is not None:
+        return location, mgr.resolve_location(location), Selector(location=location)
+    if group is not None:
+        return group, mgr.resolve_group(group), Selector(group=group)
+    if device is not None:
+        label = _resolved_device_label(mgr.device_names, device)
+        return label, [(label, mgr.resolve(device))], Selector(devices=[label])
+    if len(mgr.device_names) == 1:
+        label = mgr.device_names[0]
+        return label, [(label, mgr.resolve(None))], Selector(devices=[label])
+    named_devices = mgr.all_devices()
+    return "all-devices", named_devices, Selector(devices=[name for name, _ in named_devices])
+
+
+def _sensor_not_available_message(sensor: str, available: set[str]) -> str:
+    """Build a consistent error for sensors missing from all selected devices."""
+    msg = f"Sensor(s) not available on the selected devices: {sensor.lower()}."
+    if available:
+        msg += f" Available: {', '.join(sorted(available))}."
+    return msg
+
+
+async def _collect_series_for_targets(
+    named_devices: Sequence[tuple[str, CloudDevice]],
+    sensor: str,
+    from_dt: datetime,
+    to_dt: datetime,
+    max_points: int,
+    timezone_name: str,
+) -> SeriesSet | str:
+    """Fetch one metric for multiple cloud devices and merge them into one SeriesSet."""
+    key = sensor.lower()
+    from_ms = int(from_dt.timestamp() * 1000)
+    to_ms = int(to_dt.timestamp() * 1000)
+    series: list[TimeSeries] = []
+    available: set[str] = set()
+    saw_rows = False
+
+    for device_label, cloud in named_devices:
+        data = await cloud.get_data_timerange(from_ms, to_ms)
+        data = [_lower_keys(row) for row in data]
+        if data:
+            saw_rows = True
+            available.update(_history_sensor_keys(data))
+        if _check_sensors_present(data, [key]):
+            continue
+        if max_points > 0:
+            data = _downsample(data, max_points)
+        time_series = _rows_to_time_series(device_label, key, data, timezone_name)
+        if time_series.points:
+            series.append(time_series)
+
+    if series:
+        return _build_series_set(key, series, from_dt, to_dt, timezone_name)
+    if not saw_rows:
+        return "No historical data returned for the selected devices in the requested time range."
+    return _sensor_not_available_message(key, available)
 
 
 def _slugify(value: str) -> str:
@@ -449,6 +550,8 @@ async def export_air_quality_history(
     ctx: Context,
     sensor: str,
     device: str | None = None,
+    location: str | None = None,
+    group: str | None = None,
     last_hours: float | None = None,
     from_datetime: str | None = None,
     to_datetime: str | None = None,
@@ -456,17 +559,19 @@ async def export_air_quality_history(
     max_points: int = 300,
     timezone_name: str | None = None,
 ) -> EmbeddedResource | str:
-    """Export historical air-Q Cloud sensor data as CSV or Excel."""
-    mgr = _manager(ctx)
-    names = mgr.device_names
-    if device is None and len(names) == 1:
-        device_label = names[0]
-    elif device is not None:
-        device_label = device
-    else:
-        return f"Multiple devices configured. Specify one of: {', '.join(names)}"
+    """Export historical air-Q Cloud sensor data as one CSV or Excel file.
 
-    cloud = mgr.resolve(device)
+    Selector:
+    - `device` — one specific device
+    - `location` — all devices at one location
+    - `group` — all devices in one group
+    - if none is specified, all configured devices are exported together
+    """
+    mgr = _manager(ctx)
+    target_resolution = _resolve_history_targets(mgr, device, location, group)
+    if isinstance(target_resolution, str):
+        return target_resolution
+    scope_label, named_devices, _ = target_resolution
     time_range = _parse_time_range(
         datetime.now(timezone.utc),
         last_hours,
@@ -478,22 +583,21 @@ async def export_air_quality_history(
         return time_range
     from_dt, to_dt, effective_timezone = time_range
 
-    from_ms = int(from_dt.timestamp() * 1000)
-    to_ms = int(to_dt.timestamp() * 1000)
-    data = await cloud.get_data_timerange(from_ms, to_ms)
+    series_set = await _collect_series_for_targets(
+        named_devices,
+        sensor,
+        from_dt,
+        to_dt,
+        max_points,
+        effective_timezone,
+    )
+    if isinstance(series_set, str):
+        return series_set
 
     key = sensor.lower()
-    error = _check_sensors_present(data, [key])
-    if error:
-        return error
-
-    if max_points > 0:
-        data = _downsample(data, max_points)
-
-    series_set = _rows_to_series_set(device_label, key, data, from_dt, to_dt, effective_timezone)
     export = export_series_set(series_set, output_format=output_format)
     return _resource_from_payload(
-        _artifact_name("history", device_label, key, output_format),
+        _artifact_name("history", scope_label, key, output_format),
         export.payload,
         export.mime_type,
     )
@@ -504,6 +608,8 @@ async def plot_air_quality_history(
     ctx: Context,
     sensor: str,
     device: str | None = None,
+    location: str | None = None,
+    group: str | None = None,
     last_hours: float | None = None,
     from_datetime: str | None = None,
     to_datetime: str | None = None,
@@ -518,24 +624,24 @@ async def plot_air_quality_history(
 ) -> Image | EmbeddedResource | str:
     """Generate a chart of historical air-Q Cloud sensor data.
 
+    Selector:
+    - `device` — one specific device
+    - `location` — all devices at one location
+    - `group` — all devices in one group
+    - if none is specified, all configured devices are plotted together
+
     OUTPUT FORMAT:
-    - "png" (default) — inline image for previews
+    - "png" (default) — one inline image containing all selected devices
     - "webp" — inline image with smaller payload size
     - "svg" — vector graphic as downloadable MCP resource
     - "html" — self-contained interactive HTML as downloadable MCP resource
     """
     try:
         mgr = _manager(ctx)
-
-        names = mgr.device_names
-        if device is None and len(names) == 1:
-            device_label = names[0]
-        elif device is not None:
-            device_label = device
-        else:
-            return f"Multiple devices configured. Specify one of: {', '.join(names)}"
-
-        cloud = mgr.resolve(device)
+        target_resolution = _resolve_history_targets(mgr, device, location, group)
+        if isinstance(target_resolution, str):
+            return target_resolution
+        scope_label, named_devices, selector = target_resolution
 
         effective_hours = last_hours if last_hours is not None else 24.0
         time_range = _parse_time_range(
@@ -549,22 +655,26 @@ async def plot_air_quality_history(
             return time_range
         from_dt, to_dt, effective_timezone = time_range
 
-        from_ms = int(from_dt.timestamp() * 1000)
-        to_ms = int(to_dt.timestamp() * 1000)
-        data = await cloud.get_data_timerange(from_ms, to_ms)
+        series_set = await _collect_series_for_targets(
+            named_devices,
+            sensor,
+            from_dt,
+            to_dt,
+            max_points,
+            effective_timezone,
+        )
+        if isinstance(series_set, str):
+            return series_set
 
+        selector = Selector(
+            devices=[series.label for series in series_set.series],
+            location=selector.location,
+            group=selector.group,
+        )
         key = sensor.lower()
-        error = _check_sensors_present(data, [key])
-        if error:
-            return error
-
-        if max_points > 0:
-            data = _downsample(data, max_points)
-
-        series_set = _rows_to_series_set(device_label, key, data, from_dt, to_dt, effective_timezone)
 
         request = PlotRequest(
-            selector=Selector(devices=[device_label]),
+            selector=selector,
             metric=key,
             start=from_dt,
             end=to_dt,
@@ -581,7 +691,7 @@ async def plot_air_quality_history(
 
         model = build_plot_model(series_set, request)
         result = await render(model, request)
-        return _plot_output(result, device_label, key, output_format)
+        return _plot_output(result, scope_label, key, output_format)
 
     except ValueError as exc:
         return f"Configuration error: {exc}"

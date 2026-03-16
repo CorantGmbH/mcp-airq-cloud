@@ -19,6 +19,10 @@ class DeviceManager:
         """Return all configured device names."""
         return list(self._configs.keys())
 
+    def all_devices(self) -> list[tuple[str, CloudDevice]]:
+        """Return all configured devices with their resolved CloudDevice instances."""
+        return [(name, self._get_or_create(name)) for name in self._configs]
+
     def _unique_values(self, field: str) -> list[str]:
         """Return unique non-None values of a DeviceConfig field, insertion-ordered."""
         seen: dict[str, None] = {}

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import BlobResourceContents, EmbeddedResource, TextResourceContents
+from airq_mcp_timeseries.models import PlotResult
 
 from mcp_airq_cloud.config import DeviceConfig
 from mcp_airq_cloud.devices import DeviceManager
@@ -422,6 +423,34 @@ async def test_export_air_quality_history_returns_xlsx_resource(mock_ctx, mock_c
         assert payload[:2] == b"PK"
 
 
+async def test_export_air_quality_history_combines_all_devices_into_one_csv_resource(mock_session, multi_device_configs):
+    """Export combines all matching cloud devices into one CSV artifact."""
+    mgr = DeviceManager(mock_session, multi_device_configs)
+    ctx = MagicMock()
+    ctx.request_context.lifespan_context = mgr
+
+    living_room = AsyncMock()
+    living_room.get_data_timerange.return_value = [{"timestamp": 1000, "co2": 400}]
+    office = AsyncMock()
+    office.get_data_timerange.return_value = [{"timestamp": 1000, "pm2_5": 12}]
+    bedroom = AsyncMock()
+    bedroom.get_data_timerange.return_value = [{"timestamp": 2000, "co2": 420}]
+
+    with patch.object(
+        mgr,
+        "all_devices",
+        return_value=[("Living Room", living_room), ("Office", office), ("Bedroom", bedroom)],
+    ):
+        result = await export_air_quality_history(ctx, sensor="co2", output_format="csv")
+
+    assert isinstance(result, EmbeddedResource)
+    assert isinstance(result.resource, TextResourceContents)
+    assert str(result.resource.uri).endswith("history-all-devices-co2.csv")
+    assert "Living Room,co2,ppm,400.0" in result.resource.text
+    assert "Bedroom,co2,ppm,420.0" in result.resource.text
+    assert "Office" not in result.resource.text
+
+
 async def test_plot_air_quality_history_supports_svg_resource(mock_ctx, mock_cloud_device):
     """SVG plot output is returned as an embedded resource."""
     with patch.object(
@@ -435,6 +464,36 @@ async def test_plot_air_quality_history_supports_svg_resource(mock_ctx, mock_clo
         assert result.resource.mimeType == "image/svg+xml"
         payload = base64.b64decode(result.resource.blob)
         assert payload.lstrip().startswith(b"<?xml")
+
+
+async def test_plot_air_quality_history_combines_all_devices_into_one_resource(mock_session, multi_device_configs):
+    """Plot combines all matching cloud devices into one multi-series chart."""
+    mgr = DeviceManager(mock_session, multi_device_configs)
+    ctx = MagicMock()
+    ctx.request_context.lifespan_context = mgr
+
+    living_room = AsyncMock()
+    living_room.get_data_timerange.return_value = [{"timestamp": 1000, "co2": 400}]
+    office = AsyncMock()
+    office.get_data_timerange.return_value = [{"timestamp": 1000, "pm2_5": 12}]
+    bedroom = AsyncMock()
+    bedroom.get_data_timerange.return_value = [{"timestamp": 2000, "co2": 420}]
+    render_result = PlotResult(output_format="svg", mime_type="image/svg+xml", payload=b"<svg/>")
+
+    with patch.object(
+        mgr,
+        "all_devices",
+        return_value=[("Living Room", living_room), ("Office", office), ("Bedroom", bedroom)],
+    ), patch("mcp_airq_cloud.tools.read.render", new=AsyncMock(return_value=render_result)) as render_mock:
+        result = await plot_air_quality_history(ctx, sensor="co2", output_format="svg")
+
+    assert isinstance(result, EmbeddedResource)
+    assert isinstance(result.resource, BlobResourceContents)
+    assert str(result.resource.uri).endswith("plot-all-devices-co2.svg")
+    model, request = render_mock.await_args.args
+    assert [series.label for series in model.series] == ["Living Room", "Bedroom"]
+    assert model.y_axis_title == "ppm"
+    assert request.selector.devices == ["Living Room", "Bedroom"]
 
 
 async def test_plot_air_quality_history_supports_webp_image(mock_ctx, mock_cloud_device):

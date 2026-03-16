@@ -307,6 +307,16 @@ def build_sensor_guide(data_keys: frozenset[str] | set[str]) -> str:
     return "# air-Q Sensor Interpretation Guide\n\n" + "\n\n".join(sections)
 
 
+def sensor_unit(data_key: str) -> str | None:
+    """Return the default unit for one sensor key, if known."""
+    key = data_key.lower()
+    for _, _, rows in _SENSOR_CATEGORIES:
+        for keys, _, unit, _ in rows:
+            if key in keys:
+                return unit
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Public constants
 # ---------------------------------------------------------------------------
