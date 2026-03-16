@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.server.fastmcp.utilities.types import Image
-from mcp.types import EmbeddedResource
+from mcp.types import BlobResourceContents, EmbeddedResource, TextResourceContents
 
 from mcp_airq_cloud.config import DeviceConfig
 from mcp_airq_cloud.devices import DeviceManager
@@ -400,6 +400,7 @@ async def test_export_air_quality_history_returns_csv_resource(mock_ctx, mock_cl
     ):
         result = await export_air_quality_history(mock_ctx, sensor="co2", output_format="csv")
         assert isinstance(result, EmbeddedResource)
+        assert isinstance(result.resource, TextResourceContents)
         assert result.resource.mimeType == "text/csv; charset=utf-8"
         lines = result.resource.text.strip().splitlines()
         assert lines[0].startswith("timestamp,")
@@ -415,6 +416,7 @@ async def test_export_air_quality_history_returns_xlsx_resource(mock_ctx, mock_c
     ):
         result = await export_air_quality_history(mock_ctx, sensor="co2", output_format="xlsx")
         assert isinstance(result, EmbeddedResource)
+        assert isinstance(result.resource, BlobResourceContents)
         assert result.resource.mimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         payload = base64.b64decode(result.resource.blob)
         assert payload[:2] == b"PK"
@@ -429,6 +431,7 @@ async def test_plot_air_quality_history_supports_svg_resource(mock_ctx, mock_clo
     ):
         result = await plot_air_quality_history(mock_ctx, sensor="co2", output_format="svg")
         assert isinstance(result, EmbeddedResource)
+        assert isinstance(result.resource, BlobResourceContents)
         assert result.resource.mimeType == "image/svg+xml"
         payload = base64.b64decode(result.resource.blob)
         assert payload.lstrip().startswith(b"<?xml")

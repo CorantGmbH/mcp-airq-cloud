@@ -5,7 +5,7 @@ import json
 import re
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
@@ -24,6 +24,7 @@ from airq_mcp_timeseries.services.plot_model import build_plot_model
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import BlobResourceContents, EmbeddedResource, TextResourceContents, ToolAnnotations
+from pydantic import AnyUrl
 
 from mcp_airq_cloud.cloud_device import CloudDevice
 from mcp_airq_cloud.devices import DeviceManager
@@ -254,7 +255,7 @@ def _artifact_name(prefix: str, device_label: str, sensor: str, output_format: s
 
 def _resource_from_payload(filename: str, payload: bytes | str, mime_type: str) -> EmbeddedResource:
     """Wrap exported bytes/text as an embedded MCP resource."""
-    uri = f"airq-cloud://artifacts/{filename}"
+    uri = cast(AnyUrl, f"airq-cloud://artifacts/{filename}")
     if isinstance(payload, str):
         resource = TextResourceContents(uri=uri, mimeType=mime_type, text=payload)
     else:
