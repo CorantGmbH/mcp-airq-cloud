@@ -86,6 +86,65 @@ mcp-airq-cloud plot-air-quality-history --sensor co2 --device "Living Room" --ou
 mcp-airq-cloud export-air-quality-history --sensor co2 --device "Living Room" --output - > co2.xlsx
 ```
 
+## Historical Data
+
+Three tools provide access to historical sensor data via the air-Q Cloud API:
+
+### Plotting charts
+
+`plot_air_quality_history` renders a chart for one sensor. When multiple devices
+match, each device becomes a separate series in the same chart.
+
+![CO₂ area chart — single device](docs/images/mcp_plot_co2_24h.png)
+
+*Single device (24 h, area chart, PNG)*
+
+![CO₂ area chart — multiple devices](docs/images/mcp_plot_co2_multi.png)
+
+*Multiple devices at one location (24 h, area chart, PNG)*
+
+```bash
+# Single device, last 24 hours (default), PNG output (default)
+mcp-airq-cloud plot-air-quality-history --sensor co2 --device "Living Room"
+
+# All devices at a location, custom time range, SVG output
+mcp-airq-cloud plot-air-quality-history --sensor co2 --location "Living Room" \
+  --from-datetime "2026-03-16T00:00:00" --to-datetime "2026-03-17T00:00:00" \
+  --output-format svg --output co2.svg
+
+# All configured devices, dark mode, line chart
+mcp-airq-cloud plot-air-quality-history --sensor co2 --dark --chart-type line
+
+# Save to file
+mcp-airq-cloud plot-air-quality-history --sensor co2 --output co2_chart.png
+```
+
+**Output formats:** `png` (default), `webp`, `svg`, `html` (interactive Plotly chart with hover tooltips and zoom)
+
+**Customization:** `--title`, `--x-axis-title`, `--y-axis-title`, `--chart-type` (line/area), `--dark`, `--timezone-name`
+
+### Exporting data
+
+`export_air_quality_history` produces one CSV or Excel file containing all matching devices.
+
+```bash
+# CSV export (default)
+mcp-airq-cloud export-air-quality-history --sensor co2 --device "Living Room" --last-hours 48
+
+# Excel export for all devices at a location
+mcp-airq-cloud export-air-quality-history --sensor co2 --location "Home" \
+  --output-format xlsx --output co2.xlsx
+```
+
+### Common parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--last-hours` | 1 (history) / 24 (plot) | Hours of data to retrieve |
+| `--from-datetime` / `--to-datetime` | — | ISO 8601 time range (overrides `--last-hours`) |
+| `--max-points` | 300 | Downsample to at most N evenly spaced points |
+| `--timezone-name` | UTC | IANA timezone for timestamps (e.g. `Europe/Berlin`) |
+
 ## Configuration
 
 You need a **Cloud API key** and the **32-character device ID** for each device. Both can be obtained at [my.air-q.com](https://my.air-q.com).
